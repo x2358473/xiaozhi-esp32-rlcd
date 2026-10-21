@@ -324,9 +324,9 @@ void CustomLcdDisplay::SetupMusicUI() {
 
     // 左侧：emoji 图片（上方，48x48）
     music_emotion_img_ = lv_image_create(ai_card);
-    lv_obj_set_size(music_emotion_img_, 40, 40);
+    lv_obj_set_size(music_emotion_img_, 48, 48);
     lv_image_set_inner_align(music_emotion_img_, LV_IMAGE_ALIGN_CENTER);
-    lv_obj_align(music_emotion_img_, LV_ALIGN_LEFT_MID, 10, -10);
+    lv_obj_align(music_emotion_img_, LV_ALIGN_LEFT_MID, 8, -13);
     lv_obj_add_flag(music_emotion_img_, LV_OBJ_FLAG_HIDDEN);  // 初始隐藏，等 SetEmotion 设置
 
     // 左侧：情绪文字标签（下方）
@@ -337,7 +337,7 @@ void CustomLcdDisplay::SetupMusicUI() {
     lv_obj_set_width(music_emotion_label_, emotion_w);
     lv_label_set_long_mode(music_emotion_label_, LV_LABEL_LONG_WRAP);
     lv_label_set_text(music_emotion_label_, "待命");
-    lv_obj_align(music_emotion_label_, LV_ALIGN_LEFT_MID, 4, 20);
+    lv_obj_align(music_emotion_label_, LV_ALIGN_LEFT_MID, 4, 23);
 
     // A1：竖线改 1px 短分隔
     lv_obj_t *divider = lv_obj_create(ai_card);

@@ -101,8 +101,9 @@ void CustomLcdDisplay::SetupWeatherUI() {
     const int top_y = 36;
     const int top_row_h = 128;
     const int bot_row_h = 300 - top_y - top_row_h - gap - pad;  // = 122
-    const int left_w = 248;
-    const int right_w = 400 - pad * 2 - left_w - gap;  // = 130
+    // 时间卡收窄到 184（64px 时间约 172px 宽，留 12px 余量），把空间让给右侧日历卡
+    const int left_w = 184;
+    const int right_w = 400 - pad * 2 - left_w - gap;  // = 194
     const int bot_y = top_y + top_row_h + gap;
     const int bot_total_w = 400 - pad * 2 - gap;
     const int bot_card_w = bot_total_w * 2 / 3;  // AI 区域 = 252
@@ -122,7 +123,7 @@ void CustomLcdDisplay::SetupWeatherUI() {
     time_label_ = lv_label_create(time_card);
     lv_obj_set_style_text_color(time_label_, lv_color_black(), 0);
     lv_obj_set_style_text_font(time_label_, font_clock, 0);
-    lv_obj_set_style_text_letter_space(time_label_, 2, 0);
+    lv_obj_set_style_text_letter_space(time_label_, 0, 0);
     lv_obj_center(time_label_);
     lv_label_set_text(time_label_, "00:00");
 
@@ -138,7 +139,6 @@ void CustomLcdDisplay::SetupWeatherUI() {
 
     // --- 右上：日历卡片 ---
     int right_x = pad + left_w + gap;
-    int day_header_h = 40;
 
     lv_obj_t *calendar_card = lv_obj_create(screen);
     lv_obj_set_pos(calendar_card, right_x, top_y);
@@ -150,39 +150,40 @@ void CustomLcdDisplay::SetupWeatherUI() {
     lv_obj_set_style_pad_all(calendar_card, 0, 0);
     lv_obj_remove_flag(calendar_card, LV_OBJ_FLAG_SCROLLABLE);
 
-    // "TUE" 星期标签
+    // 星期（中文，如"星期四"）
     day_label_ = lv_label_create(calendar_card);
     lv_obj_set_style_text_font(day_label_, font_normal, 0);
     lv_obj_set_style_text_color(day_label_, lv_color_black(), 0);
-    lv_obj_set_style_text_letter_space(day_label_, 2, 0);
-    lv_obj_align(day_label_, LV_ALIGN_TOP_MID, 0, 8);
-    lv_label_set_text(day_label_, "---");
+    lv_obj_set_style_text_letter_space(day_label_, 1, 0);
+    lv_obj_align(day_label_, LV_ALIGN_TOP_MID, 0, 4);
+    lv_label_set_text(day_label_, "星期-");
 
-    // 日期数字白色区域
-    int date_area_h = 55;
-    lv_obj_t *date_area = lv_obj_create(calendar_card);
-    lv_obj_set_pos(date_area, 6, day_header_h);
-    lv_obj_set_size(date_area, right_w - 18, date_area_h);
-    // 白底上不再需要白色底块，直接让数字落在卡片上
-    lv_obj_set_style_bg_opa(date_area, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(date_area, 0, 0);
-    lv_obj_set_style_radius(date_area, 0, 0);
-    lv_obj_set_style_pad_all(date_area, 0, 0);
-    lv_obj_remove_flag(date_area, LV_OBJ_FLAG_SCROLLABLE);
-
-    date_num_label_ = lv_label_create(date_area);
-    lv_obj_set_style_text_font(date_num_label_, font_large, 0);
+    // 公历日期（单行显示，不换行）
+    date_num_label_ = lv_label_create(calendar_card);
+    lv_obj_set_style_text_font(date_num_label_, font_small, 0);
     lv_obj_set_style_text_color(date_num_label_, lv_color_black(), 0);
     lv_obj_set_style_text_align(date_num_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_center(date_num_label_);
-    lv_label_set_text(date_num_label_, "--");
+    lv_label_set_long_mode(date_num_label_, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(date_num_label_, right_w - 6);
+    lv_obj_align(date_num_label_, LV_ALIGN_TOP_MID, 0, 36);
+    lv_label_set_text(date_num_label_, "----年--月--日");
+
+    // 农历（如"农历八月廿一"，闰月显示"农历闰六月初一"）
+    lunar_label_ = lv_label_create(calendar_card);
+    lv_obj_set_style_text_font(lunar_label_, font_small, 0);
+    lv_obj_set_style_text_color(lunar_label_, lv_color_black(), 0);
+    lv_obj_set_style_text_align(lunar_label_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(lunar_label_, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(lunar_label_, right_w - 6);
+    lv_obj_align(lunar_label_, LV_ALIGN_TOP_MID, 0, 62);
+    lv_label_set_text(lunar_label_, "农历");
 
     // 天气标签
     weather_label_ = lv_label_create(calendar_card);
     lv_obj_set_style_text_font(weather_label_, font_small, 0);
     lv_obj_set_style_text_color(weather_label_, lv_color_black(), 0);
     lv_obj_set_style_text_align(weather_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(weather_label_, LV_ALIGN_BOTTOM_MID, 0, -6);
+    lv_obj_align(weather_label_, LV_ALIGN_TOP_MID, 0, 90);
     // 无数据时不要显示 "-- --°C" 这种"坏掉"的占位
     lv_label_set_text(weather_label_, "");
 
@@ -267,9 +268,9 @@ void CustomLcdDisplay::SetupWeatherUI() {
     lv_obj_t *memo_title = lv_label_create(memo_card);
     lv_obj_set_style_text_font(memo_title, font_small, 0);
     lv_obj_set_style_text_color(memo_title, lv_color_black(), 0);
-    lv_obj_set_style_text_letter_space(memo_title, 3, 0);
+    lv_obj_set_style_text_letter_space(memo_title, 1, 0);
     lv_obj_align(memo_title, LV_ALIGN_TOP_LEFT, 2, 0);
-    lv_label_set_text(memo_title, "MEMO");
+    lv_label_set_text(memo_title, "备忘录");
 
     // 标题下分隔线
     lv_obj_t *memo_sep = lv_obj_create(memo_card);

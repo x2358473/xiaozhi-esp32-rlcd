@@ -32,6 +32,71 @@
 
 static const char *TAG = "CustomDisplay";
 
+// ===== 本板内置 48x48 单色表情（由 scripts/gen_emoji.py 生成）=====
+// twemoji 彩色图在 1-bit 屏上二值化后只剩黑块，改用线条表情
+LV_IMAGE_DECLARE(ui_img_emo_neutral);
+LV_IMAGE_DECLARE(ui_img_emo_happy);
+LV_IMAGE_DECLARE(ui_img_emo_laughing);
+LV_IMAGE_DECLARE(ui_img_emo_funny);
+LV_IMAGE_DECLARE(ui_img_emo_sad);
+LV_IMAGE_DECLARE(ui_img_emo_angry);
+LV_IMAGE_DECLARE(ui_img_emo_crying);
+LV_IMAGE_DECLARE(ui_img_emo_loving);
+LV_IMAGE_DECLARE(ui_img_emo_embarrassed);
+LV_IMAGE_DECLARE(ui_img_emo_surprised);
+LV_IMAGE_DECLARE(ui_img_emo_shocked);
+LV_IMAGE_DECLARE(ui_img_emo_thinking);
+LV_IMAGE_DECLARE(ui_img_emo_winking);
+LV_IMAGE_DECLARE(ui_img_emo_cool);
+LV_IMAGE_DECLARE(ui_img_emo_relaxed);
+LV_IMAGE_DECLARE(ui_img_emo_delicious);
+LV_IMAGE_DECLARE(ui_img_emo_kissy);
+LV_IMAGE_DECLARE(ui_img_emo_confident);
+LV_IMAGE_DECLARE(ui_img_emo_sleepy);
+LV_IMAGE_DECLARE(ui_img_emo_silly);
+LV_IMAGE_DECLARE(ui_img_emo_confused);
+LV_IMAGE_DECLARE(ui_img_emo_fear);
+LV_IMAGE_DECLARE(ui_img_emo_disgusted);
+LV_IMAGE_DECLARE(ui_img_emo_microchip_ai);
+
+static const lv_image_dsc_t* GetLocalEmojiImage(const char* emotion) {
+    struct Entry {
+        const char* name;
+        const lv_image_dsc_t* image;
+    };
+    static const Entry kTable[] = {
+        {"neutral", &ui_img_emo_neutral},
+        {"happy", &ui_img_emo_happy},
+        {"laughing", &ui_img_emo_laughing},
+        {"funny", &ui_img_emo_funny},
+        {"sad", &ui_img_emo_sad},
+        {"angry", &ui_img_emo_angry},
+        {"crying", &ui_img_emo_crying},
+        {"loving", &ui_img_emo_loving},
+        {"embarrassed", &ui_img_emo_embarrassed},
+        {"surprised", &ui_img_emo_surprised},
+        {"shocked", &ui_img_emo_shocked},
+        {"thinking", &ui_img_emo_thinking},
+        {"winking", &ui_img_emo_winking},
+        {"cool", &ui_img_emo_cool},
+        {"relaxed", &ui_img_emo_relaxed},
+        {"delicious", &ui_img_emo_delicious},
+        {"kissy", &ui_img_emo_kissy},
+        {"confident", &ui_img_emo_confident},
+        {"sleepy", &ui_img_emo_sleepy},
+        {"silly", &ui_img_emo_silly},
+        {"confused", &ui_img_emo_confused},
+        {"fear", &ui_img_emo_fear},
+        {"disgusted", &ui_img_emo_disgusted},
+        {"microchip_ai", &ui_img_emo_microchip_ai},
+    };
+    if (emotion == nullptr) return nullptr;
+    for (const auto& entry : kTable) {
+        if (strcmp(entry.name, emotion) == 0) return entry.image;
+    }
+    return nullptr;
+}
+
 // ===== LVGL flush 回调 =====
 
 void CustomLcdDisplay::Lvgl_flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * color_p)
@@ -330,40 +395,21 @@ void CustomLcdDisplay::SetEmotion(const char* emotion) {
         lv_label_set_text(pomo_emotion_label_, text);
     }
     
-    // 2. 尝试加载小智自带的 emoji 图片（天气页 + 音乐页 + 番茄钟页同步更新）
-    if (current_theme_) {
-        auto emoji_collection = static_cast<LvglTheme*>(current_theme_)->emoji_collection();
-        auto image = emoji_collection ? emoji_collection->GetEmojiImage(emotion) : nullptr;
-        bool has_image = (image && !image->IsGif());
-        
-        // 天气页 emoji
-        if (emotion_img_) {
-            if (has_image) {
-                lv_image_set_src(emotion_img_, image->image_dsc());
-                lv_obj_remove_flag(emotion_img_, LV_OBJ_FLAG_HIDDEN);
-            } else {
-                lv_obj_add_flag(emotion_img_, LV_OBJ_FLAG_HIDDEN);
-            }
+    // 2. 使用本板内置的 48x48 单色表情（三页同步）
+    // 不用 theme 的彩色 twemoji：在 1-bit 屏上二值化后只剩黑块，看不出表情
+    const lv_image_dsc_t* local_emoji = GetLocalEmojiImage(emotion);
+    auto apply_emoji = [local_emoji](lv_obj_t* img) {
+        if (img == nullptr) return;
+        if (local_emoji != nullptr) {
+            lv_image_set_src(img, local_emoji);
+            lv_obj_remove_flag(img, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(img, LV_OBJ_FLAG_HIDDEN);
         }
-        // 音乐页 emoji（同步显示相同的表情图片）
-        if (music_emotion_img_) {
-            if (has_image) {
-                lv_image_set_src(music_emotion_img_, image->image_dsc());
-                lv_obj_remove_flag(music_emotion_img_, LV_OBJ_FLAG_HIDDEN);
-            } else {
-                lv_obj_add_flag(music_emotion_img_, LV_OBJ_FLAG_HIDDEN);
-            }
-        }
-        // 番茄钟页 emoji
-        if (pomo_emotion_img_) {
-            if (has_image) {
-                lv_image_set_src(pomo_emotion_img_, image->image_dsc());
-                lv_obj_remove_flag(pomo_emotion_img_, LV_OBJ_FLAG_HIDDEN);
-            } else {
-                lv_obj_add_flag(pomo_emotion_img_, LV_OBJ_FLAG_HIDDEN);
-            }
-        }
-    }
+    };
+    apply_emoji(emotion_img_);
+    apply_emoji(music_emotion_img_);
+    apply_emoji(pomo_emotion_img_);
 }
 
 void CustomLcdDisplay::ClearChatMessages() {

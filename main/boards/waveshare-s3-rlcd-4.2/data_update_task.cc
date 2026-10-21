@@ -13,6 +13,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <string>
 #include <cJSON.h>
 #include <sys/time.h>
 #include <freertos/FreeRTOS.h>
@@ -28,6 +29,7 @@
 #include "managers/sensor_manager.h"
 #include "managers/weather_manager.h"
 #include "managers/pomodoro_manager.h"
+#include "managers/lunar_calendar.h"
 #if __has_include("secret_config.h")
 #include "secret_config.h"
 #endif
@@ -249,15 +251,26 @@ void CustomLcdDisplay::DataUpdateTask(void *arg) {
                 if (self->music_time_label_) lv_label_set_text(self->music_time_label_, time_buf);
                 if (self->pomo_time_label_) lv_label_set_text(self->pomo_time_label_, time_buf);
 
-                const char *weeks_en[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
-                if (self->day_label_) lv_label_set_text(self->day_label_, weeks_en[timeinfo.tm_wday]);
+                static const char *kWeekNames[] = {
+                    "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"
+                };
+                if (self->day_label_) lv_label_set_text(self->day_label_, kWeekNames[timeinfo.tm_wday]);
 
-                char date_buf[8];
-                snprintf(date_buf, sizeof(date_buf), "%d", timeinfo.tm_mday);
+                // 公历日期（单行显示：2026年10月1日）
+                char date_buf[32];
+                snprintf(date_buf, sizeof(date_buf), "%d年%d月%d日",
+                         timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
                 if (self->date_num_label_) lv_label_set_text(self->date_num_label_, date_buf);
 
+                // 农历（本地查表换算，不依赖网络）
+                LunarDate lunar;
+                if (SolarToLunar(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, &lunar)) {
+                    std::string lunar_text = "农历" + LunarToChinese(lunar);
+                    if (self->lunar_label_) lv_label_set_text(self->lunar_label_, lunar_text.c_str());
+                }
+
                 self->last_min_ = timeinfo.tm_min;
-                ESP_LOGI(TAG, "时间已更新: %s, %s, %d日", time_buf, weeks_en[timeinfo.tm_wday], timeinfo.tm_mday);
+                ESP_LOGI(TAG, "时间已更新: %s, %s, %s", time_buf, kWeekNames[timeinfo.tm_wday], date_buf);
             }
         }  // DisplayLockGuard 自动释放
 

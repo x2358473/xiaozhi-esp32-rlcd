@@ -51,8 +51,9 @@ private:
     lv_obj_t *time_label_ = nullptr;        // 大字时钟 "14:30"
     
     // 日历卡片（右上）
-    lv_obj_t *day_label_ = nullptr;         // 星期 "TUE"
-    lv_obj_t *date_num_label_ = nullptr;    // 日期 "15"
+    lv_obj_t *day_label_ = nullptr;         // 星期 "星期四"
+    lv_obj_t *date_num_label_ = nullptr;    // 公历日期 "2026年10月1日"
+    lv_obj_t *lunar_label_ = nullptr;       // 农历 "农历八月廿一"
     lv_obj_t *weather_label_ = nullptr;     // 天气 "晴 25°C"
     
     // AI 对话卡片（左下）
