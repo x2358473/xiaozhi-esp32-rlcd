@@ -81,7 +81,6 @@ void CustomLcdDisplay::SetupMusicUI() {
     music_sensor_label_ = lv_label_create(page);
     lv_obj_set_style_text_font(music_sensor_label_, font_sm, 0);
     lv_obj_set_style_text_color(music_sensor_label_, lv_color_black(), 0);
-    lv_obj_set_style_text_opa(music_sensor_label_, LV_OPA_60, 0);
     lv_obj_align(music_sensor_label_, LV_ALIGN_TOP_LEFT, 80, 11);
     lv_label_set_text(music_sensor_label_, "--.-°C --.-%");
 
@@ -209,7 +208,6 @@ void CustomLcdDisplay::SetupMusicUI() {
     music_artist_label_ = lv_label_create(info_card);
     lv_obj_set_style_text_font(music_artist_label_, font_sm, 0);
     lv_obj_set_style_text_color(music_artist_label_, lv_color_black(), 0);
-    lv_obj_set_style_text_opa(music_artist_label_, LV_OPA_60, 0);
     lv_obj_set_style_text_align(music_artist_label_, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_width(music_artist_label_, info_w - 24);
     lv_label_set_long_mode(music_artist_label_, LV_LABEL_LONG_SCROLL_CIRCULAR);
@@ -299,7 +297,6 @@ void CustomLcdDisplay::SetupMusicUI() {
     music_progress_label_ = lv_label_create(page);
     lv_obj_set_style_text_font(music_progress_label_, font_sm, 0);
     lv_obj_set_style_text_color(music_progress_label_, lv_color_black(), 0);
-    lv_obj_set_style_text_opa(music_progress_label_, LV_OPA_70, 0);
     lv_label_set_text(music_progress_label_, "00:00 / 00:00");
     lv_obj_set_pos(music_progress_label_, PAD + bar_w + 8, bar_y + 2);
 

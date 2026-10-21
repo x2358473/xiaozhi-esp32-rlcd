@@ -34,14 +34,6 @@ static const char *TAG = "CustomDisplay";
 
 // ===== LVGL flush 回调 =====
 
-// 4x4 Bayer 抖动矩阵：单色屏上用网点模拟灰阶（0=最暗，15=最亮）
-static const uint8_t kBayer4x4[4][4] = {
-    { 0,  8,  2, 10},
-    {12,  4, 14,  6},
-    { 3, 11,  1,  9},
-    {15,  7, 13,  5},
-};
-
 void CustomLcdDisplay::Lvgl_flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * color_p)
 {
     assert(disp != NULL);
@@ -50,7 +42,6 @@ void CustomLcdDisplay::Lvgl_flush_cb(lv_display_t * disp, const lv_area_t * area
     uint16_t *buffer = (uint16_t *)color_p;
     for(int y = area->y1; y <= area->y2; y++)
     {
-        const uint8_t *bayer_row = kBayer4x4[y & 3];
         for(int x = area->x1; x <= area->x2; x++) 
         {
             const uint16_t px = *buffer++;
@@ -60,9 +51,10 @@ void CustomLcdDisplay::Lvgl_flush_cb(lv_display_t * disp, const lv_area_t * area
             const uint16_t b5 = px & 0x1F;
             const uint16_t luma = (r5 * 616 + g6 * 600 + b5 * 232) >> 8;
 
-            // 与 Bayer 阈值比较：亮度越低黑点占比越高（可呈现 25%/50%/75% 网点灰）
-            const uint8_t threshold = (bayer_row[x & 3] << 4) + 8;
-            const uint8_t color = (luma < threshold) ? ColorBlack : ColorWhite;
+            // 1-bit 硬二值化，阈值 160（约 63% 亮度）：
+            // 偏向保留深色笔画，让 4bpp 抗锯齿小字的边缘尽量连成实线。
+            // 不用 Bayer 抖动——抖动会把字体的灰度边缘打散成网点，小字明显发虚。
+            const uint8_t color = (luma < 160) ? ColorBlack : ColorWhite;
             rlcd->RLCD_SetPixel(x, y, color);
         }
     }

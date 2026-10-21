@@ -79,7 +79,6 @@ void CustomLcdDisplay::SetupPomodoroUI() {
     pomo_sensor_label_ = lv_label_create(page);
     lv_obj_set_style_text_font(pomo_sensor_label_, font_sm, 0);
     lv_obj_set_style_text_color(pomo_sensor_label_, lv_color_black(), 0);
-    lv_obj_set_style_text_opa(pomo_sensor_label_, LV_OPA_60, 0);
     lv_obj_align(pomo_sensor_label_, LV_ALIGN_TOP_LEFT, 80, 11);
     lv_label_set_text(pomo_sensor_label_, "--.-°C --.-%");
 
@@ -163,7 +162,6 @@ void CustomLcdDisplay::SetupPomodoroUI() {
     pomo_info_label_ = lv_label_create(page);
     lv_obj_set_style_text_font(pomo_info_label_, font_sm, 0);
     lv_obj_set_style_text_color(pomo_info_label_, lv_color_black(), 0);
-    lv_obj_set_style_text_opa(pomo_info_label_, LV_OPA_60, 0);  // 60% 黑在白底上即浅灰（抖动网点）
     lv_obj_set_style_text_align(pomo_info_label_, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(pomo_info_label_, SCR_W);
     lv_label_set_text(pomo_info_label_, "25分钟 专注 / 5分钟 休息");

@@ -730,9 +730,38 @@ private:
         }
 
         int smoothed = (int)(ema_voltage + 0.5f);  // 四舍五入
-        // 电压→百分比映射（抛物线拟合）
-        int percent = (-1 * smoothed * smoothed + 9016 * smoothed - 19189000) / 10000;
-        percent = (percent > 100) ? 100 : (percent < 0) ? 0 : percent;
+
+        // 电压→百分比映射：分段线性（单节锂电典型放电曲线，单位 mV）
+        // 原来的抛物线在 4.2V 会算出 103% 被截断，顶段几乎没有分辨率
+        static const struct { int mv; int percent; } kCurve[] = {
+            {4200, 100}, {4100, 90}, {4000, 80}, {3900, 68}, {3800, 52},
+            {3700, 35},  {3600, 18}, {3500, 10}, {3300, 3},  {3000, 0},
+        };
+        constexpr int kCurveLen = sizeof(kCurve) / sizeof(kCurve[0]);
+
+        int percent = 0;
+        if (smoothed >= kCurve[0].mv) {
+            percent = 100;
+        } else if (smoothed <= kCurve[kCurveLen - 1].mv) {
+            percent = 0;
+        } else {
+            for (int i = 0; i < kCurveLen - 1; ++i) {
+                if (smoothed <= kCurve[i].mv && smoothed >= kCurve[i + 1].mv) {
+                    const int v_hi = kCurve[i].mv, p_hi = kCurve[i].percent;
+                    const int v_lo = kCurve[i + 1].mv, p_lo = kCurve[i + 1].percent;
+                    percent = p_lo + (smoothed - v_lo) * (p_hi - p_lo) / (v_hi - v_lo);
+                    break;
+                }
+            }
+        }
+
+        // ±1% 迟滞：避免在分段边界来回抖动，导致电量文字/图标频繁重绘
+        // （RLCD 每次刷新都是全屏 SPI 写入，容易留残影）
+        static int last_percent = -1;
+        if (last_percent >= 0 && percent > last_percent - 2 && percent < last_percent + 2) {
+            return (uint8_t)last_percent;
+        }
+        last_percent = percent;
         return (uint8_t)percent;
     }
 
