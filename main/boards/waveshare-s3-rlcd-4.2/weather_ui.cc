@@ -155,17 +155,17 @@ void CustomLcdDisplay::SetupWeatherUI() {
     lv_obj_set_style_text_font(day_label_, font_normal, 0);
     lv_obj_set_style_text_color(day_label_, lv_color_black(), 0);
     lv_obj_set_style_text_letter_space(day_label_, 1, 0);
-    lv_obj_align(day_label_, LV_ALIGN_TOP_MID, 0, 4);
+    lv_obj_align(day_label_, LV_ALIGN_TOP_MID, 0, 16);
     lv_label_set_text(day_label_, "星期-");
 
-    // 公历日期（单行显示，不换行）
+    // 公历日期（单行显示，不换行）：用 16px 字体，比农历大一号，方便一眼看清
     date_num_label_ = lv_label_create(calendar_card);
-    lv_obj_set_style_text_font(date_num_label_, font_small, 0);
+    lv_obj_set_style_text_font(date_num_label_, &alibaba_puhui_16, 0);
     lv_obj_set_style_text_color(date_num_label_, lv_color_black(), 0);
     lv_obj_set_style_text_align(date_num_label_, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(date_num_label_, LV_LABEL_LONG_CLIP);
     lv_obj_set_width(date_num_label_, right_w - 6);
-    lv_obj_align(date_num_label_, LV_ALIGN_TOP_MID, 0, 36);
+    lv_obj_align(date_num_label_, LV_ALIGN_TOP_MID, 0, 50);
     lv_label_set_text(date_num_label_, "----年--月--日");
 
     // 农历（如"农历八月廿一"，闰月显示"农历闰六月初一"）
@@ -175,7 +175,7 @@ void CustomLcdDisplay::SetupWeatherUI() {
     lv_obj_set_style_text_align(lunar_label_, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(lunar_label_, LV_LABEL_LONG_CLIP);
     lv_obj_set_width(lunar_label_, right_w - 6);
-    lv_obj_align(lunar_label_, LV_ALIGN_TOP_MID, 0, 62);
+    lv_obj_align(lunar_label_, LV_ALIGN_TOP_MID, 0, 74);
     lv_label_set_text(lunar_label_, "农历");
 
     // 天气标签
@@ -183,9 +183,13 @@ void CustomLcdDisplay::SetupWeatherUI() {
     lv_obj_set_style_text_font(weather_label_, font_small, 0);
     lv_obj_set_style_text_color(weather_label_, lv_color_black(), 0);
     lv_obj_set_style_text_align(weather_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(weather_label_, LV_ALIGN_TOP_MID, 0, 90);
-    // 无数据时不要显示 "-- --°C" 这种"坏掉"的占位
-    lv_label_set_text(weather_label_, "");
+    // 单行裁剪，避免文案过长换行撑出卡片
+    lv_label_set_long_mode(weather_label_, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(weather_label_, right_w - 6);
+    lv_obj_align(weather_label_, LV_ALIGN_TOP_MID, 0, 98);
+    // 无数据提示：14px 下 8 个汉字约 112px，稳在 172px 可用宽度内；
+    // "请小智帮你获取天气信息" 11 字约 154px，接近上限容易顶边，故取短句
+    lv_label_set_text(weather_label_, "未获取到天气信息");
 
     // --- 左下：AI 对话卡片（小智接管这里）---
     // 布局：[左侧表情区 64px | 分隔线 | 右侧对话文字区]
