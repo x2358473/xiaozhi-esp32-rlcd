@@ -50,11 +50,12 @@ void CustomLcdDisplay::SetupWeatherUI() {
 
     lv_obj_t *screen = weather_page_;
 
-    const lv_font_t *font_small  = &alibaba_puhui_16;
+    // 中文统一用 1bpp 的 font_puhui_14_1：完整 7415 汉字 + 纯黑白笔画，
+    // alibaba_puhui_16 字符集只有 163 个字（缺"农历""忘""录"等），4bpp 字在 1-bit 屏上会糊
+    const lv_font_t *font_small  = &font_puhui_14_1;
     const lv_font_t *font_normal = &alibaba_puhui_24;
     const lv_font_t *font_clock  = &alibaba_black_64;
-    // 小智完整字库（7415 常用汉字，AI 对话区域专用）
-    const lv_font_t *font_ai     = &font_puhui_16_4;
+    const lv_font_t *font_ai     = &font_puhui_14_1;
 
     // ===== 状态栏（右上角，白底上直接排图标与电量）=====
     lv_obj_t *status_bar = lv_obj_create(screen);
@@ -100,9 +101,9 @@ void CustomLcdDisplay::SetupWeatherUI() {
     const int top_y = 36;
     const int top_row_h = 128;
     const int bot_row_h = 300 - top_y - top_row_h - gap - pad;  // = 122
-    // 时间卡收窄到 184（64px 时间约 172px 宽，留 12px 余量），把空间让给右侧日历卡
-    const int left_w = 184;
-    const int right_w = 400 - pad * 2 - left_w - gap;  // = 194
+    // 时间卡 200：64px 时间约 172px 宽，左右各留 14px，不再贴边
+    const int left_w = 200;
+    const int right_w = 400 - pad * 2 - left_w - gap;  // = 178
     const int bot_y = top_y + top_row_h + gap;
     const int bot_total_w = 400 - pad * 2 - gap;
     const int bot_card_w = bot_total_w * 2 / 3;  // AI 区域 = 252

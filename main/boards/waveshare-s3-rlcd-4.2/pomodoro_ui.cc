@@ -40,10 +40,11 @@ void CustomLcdDisplay::SetupPomodoroUI() {
     DisplayLockGuard lock(this);
 
     lv_obj_t *root = lv_screen_active();
-    const lv_font_t *font_num    = &alibaba_puhui_16;
+    // 中文统一用 1bpp 的 font_puhui_14_1（完整汉字 + 纯黑白，1-bit 屏上最清晰）
+    const lv_font_t *font_num    = &font_puhui_14_1;
     const lv_font_t *font_time   = &alibaba_puhui_24;
     const lv_font_t *font_big    = &alibaba_black_64;
-    const lv_font_t *font_cn     = &font_puhui_16_4;
+    const lv_font_t *font_cn     = &font_puhui_14_1;
     const lv_font_t *font_sm     = &font_puhui_14_1;
 
     const int SCR_W = 400;

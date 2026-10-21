@@ -133,6 +133,9 @@ private:
     // 数据更新任务（实现在 data_update_task.cc）
     static void DataUpdateTask(void *arg);
 
+    // 应用内置表情图（调用者必须已经持有 LVGL 锁）
+    void ApplyEmotionImageInternal(const char* emotion);
+
 public:
     CustomLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
                   int width, int height, int offset_x, int offset_y,
@@ -158,6 +161,10 @@ public:
     // 重写小智的 AI 显示方法，适配到左下角卡片
     virtual void SetChatMessage(const char* role, const char* content) override;
     virtual void SetEmotion(const char* emotion) override;
+
+    // 仅更新表情图（供 DataUpdateTask 按设备状态切换表情，内部会加锁）
+    void SetEmotionImage(const char* emotion);
+
     virtual void ClearChatMessages() override;
     
     // 重写状态栏更新（我们用图片图标，不用 Font Awesome 文字）

@@ -352,6 +352,8 @@ void CustomLcdDisplay::DataUpdateTask(void *arg) {
         // 🔑 如果正在显示系统信息滚动，跳过 UI 更新（避免锁竞争）
         // 低电量提示音要等 LVGL 锁释放后再播，避免阻塞刷新
         bool play_low_battery_sound = false;
+        // 表情图也要在锁外设置（SetEmotionImage 内部会重新加锁）
+        const char* pending_emotion_image = nullptr;
         if (!self->showing_system_info_) {
             DisplayLockGuard lock(self);
             static uint32_t last_noncritical_ui_update_ms = 0;
@@ -497,21 +499,23 @@ void CustomLcdDisplay::DataUpdateTask(void *arg) {
                     self->NotifyUserActivity();
                 }
 
-                // 更新左侧表情区域（显示当前状态简称）
+                // 更新左侧表情区域（显示当前状态简称）+ 对应表情图
                 const char* emotion_text = "待命";
+                const char* emotion_image = "neutral";
                 const char* status_text = "";
                 switch (ds) {
-                    case kDeviceStateConnecting:      emotion_text = "连接"; status_text = "连接中..."; break;
-                    case kDeviceStateListening:       emotion_text = "聆听"; status_text = "聆听中..."; break;
-                    case kDeviceStateSpeaking:        emotion_text = "说话"; break;  // 对话文字由 SetChatMessage 更新
-                    case kDeviceStateStarting:        emotion_text = "启动"; status_text = "启动中..."; break;
-                    case kDeviceStateWifiConfiguring: emotion_text = "配网"; break;   // 详细文案由 Alert() -> SetChatMessage 设置
-                    case kDeviceStateUpgrading:       emotion_text = "升级"; status_text = "升级中..."; break;
-                    case kDeviceStateActivating:      emotion_text = "激活"; break;   // 详细文案由 Alert() -> SetChatMessage 设置
-                    case kDeviceStateFatalError:      emotion_text = "错误"; status_text = "发生错误"; break;
-                    case kDeviceStateIdle:            emotion_text = "待命"; break;   // 空闲时表情由 SetEmotion 管理
+                    case kDeviceStateConnecting:      emotion_text = "连接"; emotion_image = "thinking"; status_text = "连接中..."; break;
+                    case kDeviceStateListening:       emotion_text = "聆听"; emotion_image = "winking";  status_text = "聆听中..."; break;
+                    case kDeviceStateSpeaking:        emotion_text = "说话"; emotion_image = "happy";    break;  // 对话文字由 SetChatMessage 更新
+                    case kDeviceStateStarting:        emotion_text = "启动"; emotion_image = "sleepy";   status_text = "启动中..."; break;
+                    case kDeviceStateWifiConfiguring: emotion_text = "配网"; emotion_image = "thinking"; break;   // 详细文案由 Alert() -> SetChatMessage 设置
+                    case kDeviceStateUpgrading:       emotion_text = "升级"; emotion_image = "sleepy";   status_text = "升级中..."; break;
+                    case kDeviceStateActivating:      emotion_text = "激活"; emotion_image = "thinking"; break;   // 详细文案由 Alert() -> SetChatMessage 设置
+                    case kDeviceStateFatalError:      emotion_text = "错误"; emotion_image = "sad";      status_text = "发生错误"; break;
+                    case kDeviceStateIdle:            emotion_text = "待命"; emotion_image = "neutral";  break;   // 空闲时情绪图可能被 SetEmotion 覆盖
                     default: break;
                 }
+                pending_emotion_image = emotion_image;
                 if (self->emotion_label_) {
                     lv_label_set_text(self->emotion_label_, emotion_text);
                 }
@@ -554,6 +558,11 @@ void CustomLcdDisplay::DataUpdateTask(void *arg) {
         // 持锁播放会让整屏停止刷新，并与 TTS 抢同一个解码队列
         if (play_low_battery_sound) {
             app.PlaySound(Lang::Sounds::OGG_LOW_BATTERY);
+        }
+
+        // 锁外更新表情图（配网/聆听/说话等状态也要有表情，不只依赖 SetEmotion）
+        if (pending_emotion_image != nullptr) {
+            self->SetEmotionImage(pending_emotion_image);
         }
 
         // ===== 番茄钟 UI 刷新 =====

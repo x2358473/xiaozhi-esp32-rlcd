@@ -397,6 +397,15 @@ void CustomLcdDisplay::SetEmotion(const char* emotion) {
     
     // 2. 使用本板内置的 48x48 单色表情（三页同步）
     // 不用 theme 的彩色 twemoji：在 1-bit 屏上二值化后只剩黑块，看不出表情
+    ApplyEmotionImageInternal(emotion);
+}
+
+void CustomLcdDisplay::SetEmotionImage(const char* emotion) {
+    DisplayLockGuard lock(this);
+    ApplyEmotionImageInternal(emotion);
+}
+
+void CustomLcdDisplay::ApplyEmotionImageInternal(const char* emotion) {
     const lv_image_dsc_t* local_emoji = GetLocalEmojiImage(emotion);
     auto apply_emoji = [local_emoji](lv_obj_t* img) {
         if (img == nullptr) return;

@@ -42,10 +42,11 @@ void CustomLcdDisplay::SetupMusicUI() {
     DisplayLockGuard lock(this);
 
     lv_obj_t *root = lv_screen_active();
-    const lv_font_t *font_num    = &alibaba_puhui_16;   // 纯数字/ASCII 用
-    const lv_font_t *font_time   = &alibaba_puhui_24;   // 时钟数字
-    const lv_font_t *font_cn     = &font_puhui_16_4;    // 所有中文文字统一用这个
-    const lv_font_t *font_sm     = &font_puhui_14_1;    // 14px 小字
+    // 中文统一用 1bpp 的 font_puhui_14_1（完整汉字 + 纯黑白，1-bit 屏上最清晰）
+    const lv_font_t *font_num    = &font_puhui_14_1;   // 数字/ASCII
+    const lv_font_t *font_time   = &alibaba_puhui_24;  // 时钟数字
+    const lv_font_t *font_cn     = &font_puhui_14_1;   // 中文统一 14px
+    const lv_font_t *font_sm     = &font_puhui_14_1;   // 14px 小字
 
     // 全局布局常量
     const int SCR_W = 400;
