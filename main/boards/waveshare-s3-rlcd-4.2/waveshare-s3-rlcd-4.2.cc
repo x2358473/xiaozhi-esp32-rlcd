@@ -3,6 +3,7 @@
 #include <driver/spi_common.h>
 #include <esp_log.h>
 #include <esp_system.h>
+#include <esp_wifi.h>
 #include <string>
 #include <soc/rtc.h>
 #include "custom_lcd_display.h"
@@ -33,8 +34,6 @@ private:
     Button boot_button_;
     Button user_button_;  // GPIO18 用户按键
     CustomLcdDisplay *display_;
-    adc_oneshot_unit_handle_t adc1_handle;
-    adc_cali_handle_t cali_handle;
 
     // 校验时间标签是否为 HH:MM（24 小时制）
     bool IsValidMemoTimeLabel(const std::string& time_str) {
@@ -147,11 +146,8 @@ private:
         
         // WiFi 信息
         auto& app = Application::GetInstance();
-        const char* wifi_status = "未连接";
-        if (app.GetDeviceState() != kDeviceStateStarting && 
-            app.GetDeviceState() != kDeviceStateWifiConfiguring) {
-            wifi_status = "已连接";
-        }
+        wifi_ap_record_t ap_info = {};
+        const char* wifi_status = (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) ? "已连接" : "未连接";
         
         // 运行时间
         uint64_t uptime_sec = esp_timer_get_time() / 1000000;
@@ -174,10 +170,10 @@ private:
                  "WiFi: %s\n"
                  "==============\n"
                  "\n",  // 分隔符
-                 cpu_freq_mhz,
-                 uptime_hours, uptime_mins,
-                 (total_heap - free_heap) / 1024, total_heap / 1024, heap_percent,
-                 (total_psram - free_psram) / 1024 / 1024, total_psram / 1024 / 1024, psram_percent,
+                 (unsigned long)cpu_freq_mhz,
+                 (unsigned long)uptime_hours, (unsigned long)uptime_mins,
+                 (int)((total_heap - free_heap) / 1024), (int)(total_heap / 1024), heap_percent,
+                 (int)((total_psram - free_psram) / 1024 / 1024), (int)(total_psram / 1024 / 1024), psram_percent,
                  battery_level, charging ? "充电中" : "放电中",
                  wifi_status);
         
@@ -534,7 +530,7 @@ private:
 
                 // 写回 NVS
                 char *new_json = cJSON_PrintUnformatted(arr);
-                {
+                if (new_json) {
                     Settings settings("memo", true);
                     settings.SetString("items", new_json);
                 }
@@ -571,12 +567,12 @@ private:
                     cJSON *t = cJSON_GetObjectItem(item, "t");
                     cJSON *c = cJSON_GetObjectItem(item, "c");
                     result += std::to_string(i + 1) + ". ";
-                    if (t && strlen(t->valuestring) > 0) {
+                    if (cJSON_IsString(t) && strlen(t->valuestring) > 0) {
                         result += "[";
                         result += t->valuestring;
                         result += "] ";
                     }
-                    if (c) result += c->valuestring;
+                    if (cJSON_IsString(c)) result += c->valuestring;
                     result += "\n";
                 }
                 cJSON_Delete(arr);
@@ -619,11 +615,11 @@ private:
 
                 // 写回 NVS
                 char *new_json = cJSON_PrintUnformatted(arr);
-                {
+                if (new_json) {
                     Settings settings("memo", true);
                     settings.SetString("items", new_json);
+                    cJSON_free(new_json);
                 }
-                cJSON_free(new_json);
                 cJSON_Delete(arr);
 
                 // 刷新屏幕
@@ -665,38 +661,49 @@ private:
 
     uint16_t BatterygetVoltage(void) {
         static bool initialized = false;
-        static adc_oneshot_unit_handle_t adc_handle;
+        static adc_oneshot_unit_handle_t adc_handle = nullptr;
         static adc_cali_handle_t cali_handle = NULL;
         if (!initialized) {
+            // 只尝试初始化一次。若校准失败就不置位，会导致每次采样都 new_unit，
+            // 每秒泄漏 10 个 ADC 单元句柄，最终电量恒为 0%
+            initialized = true;
+
             adc_oneshot_unit_init_cfg_t init_config = {
                 .unit_id = ADC_UNIT_1,
             };
-            adc_oneshot_new_unit(&init_config, &adc_handle);
+            if (adc_oneshot_new_unit(&init_config, &adc_handle) != ESP_OK) {
+                ESP_LOGE(TAG, "ADC 单元初始化失败，电量读取不可用");
+                adc_handle = nullptr;
+                return 0;
+            }
     
             adc_oneshot_chan_cfg_t ch_config = {
                 .atten = ADC_ATTEN_DB_12,
                 .bitwidth = ADC_BITWIDTH_12,
             };
-            adc_oneshot_config_channel(adc_handle, ADC_CHANNEL_3, &ch_config);
+            if (adc_oneshot_config_channel(adc_handle, ADC_CHANNEL_3, &ch_config) != ESP_OK) {
+                ESP_LOGE(TAG, "ADC 通道 %d 配置失败", ADC_CHANNEL_3);
+            }
     
             adc_cali_curve_fitting_config_t cali_config = {
                 .unit_id = ADC_UNIT_1,
                 .atten = ADC_ATTEN_DB_12,
                 .bitwidth = ADC_BITWIDTH_12,
             };
-            if (adc_cali_create_scheme_curve_fitting(&cali_config, &cali_handle) == ESP_OK) {
-                initialized = true;
+            if (adc_cali_create_scheme_curve_fitting(&cali_config, &cali_handle) != ESP_OK) {
+                cali_handle = NULL;
+                ESP_LOGW(TAG, "ADC 校准不可用，电量将显示为 0%%");
             }
         }
 
-        if (initialized) {
+        if (adc_handle != nullptr && cali_handle != nullptr) {
             int raw_value = 0;
             int raw_voltage = 0;
-            int voltage = 0;
-            adc_oneshot_read(adc_handle, ADC_CHANNEL_3, &raw_value);
-            adc_cali_raw_to_voltage(cali_handle, raw_value, &raw_voltage);
-            voltage = raw_voltage * 3;  // 分压电阻比例
-            return (uint16_t)voltage;
+            if (adc_oneshot_read(adc_handle, ADC_CHANNEL_3, &raw_value) == ESP_OK &&
+                adc_cali_raw_to_voltage(cali_handle, raw_value, &raw_voltage) == ESP_OK) {
+                int voltage = raw_voltage * 3;  // 分压电阻比例
+                return (uint16_t)voltage;
+            }
         }
         return 0;
     }

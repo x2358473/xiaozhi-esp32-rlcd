@@ -53,13 +53,19 @@ RlcdDriver::RlcdDriver(spi_display_config_t spiconfig, int width, int height,
     // 分配 1-bit 显示缓冲区
     DisplayLen = transfer >> 3;
     DispBuffer = (uint8_t *)heap_caps_malloc(DisplayLen, MALLOC_CAP_SPIRAM);
-    assert(DispBuffer);
 
     // 分配像素映射 LUT（加速 RGB565 → 1-bit 转换）
     PixelIndexLUT = (uint16_t (*)[300])heap_caps_malloc(transfer * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
     PixelBitLUT   = (uint8_t (*)[300])heap_caps_malloc(transfer * sizeof(uint8_t), MALLOC_CAP_SPIRAM);
-    assert(PixelIndexLUT);
-    assert(PixelBitLUT);
+
+    if (!DispBuffer || !PixelIndexLUT || !PixelBitLUT) {
+        // assert 在 release 构建下会被裁掉，改成运行时判空：
+        // 各绘制接口在缓冲区为空时直接返回，避免写 NULL 崩溃
+        ESP_LOGE(TAG, "RLCD 缓冲区分配失败 (buf=%p, index_lut=%p, bit_lut=%p)",
+                 (void*)DispBuffer, (void*)PixelIndexLUT, (void*)PixelBitLUT);
+        return;
+    }
+
     if (width_ == 400) {
         InitLandscapeLUT();
     } else {
@@ -73,6 +79,15 @@ RlcdDriver::~RlcdDriver() {
     if (DispBuffer) heap_caps_free(DispBuffer);
     if (PixelIndexLUT) heap_caps_free(PixelIndexLUT);
     if (PixelBitLUT) heap_caps_free(PixelBitLUT);
+    DispBuffer = nullptr;
+    PixelIndexLUT = nullptr;
+    PixelBitLUT = nullptr;
+
+    // 释放本驱动自己的 panel IO；SPI 总线可能与其他外设共用，不在此处 spi_bus_free
+    if (io_handle_) {
+        esp_lcd_panel_io_del(io_handle_);
+        io_handle_ = nullptr;
+    }
 }
 
 // ===== 像素映射 LUT 初始化 =====
@@ -140,6 +155,7 @@ void RlcdDriver::RLCD_Reset() {
 // ===== 屏幕操作 =====
 
 void RlcdDriver::RLCD_ColorClear(uint8_t color) {
+    if (!DispBuffer) return;
     memset(DispBuffer, color, DisplayLen);
 }
 
@@ -179,6 +195,7 @@ void RlcdDriver::RLCD_Init() {
 }
 
 void RlcdDriver::RLCD_SetPixel(uint16_t x, uint16_t y, uint8_t color) {
+    if (!DispBuffer || !PixelIndexLUT || !PixelBitLUT) return;
     uint32_t idx = PixelIndexLUT[x][y];
     uint8_t  mask = PixelBitLUT[x][y];
     uint8_t *p = &DispBuffer[idx];
@@ -189,6 +206,7 @@ void RlcdDriver::RLCD_SetPixel(uint16_t x, uint16_t y, uint8_t color) {
 }
 
 void RlcdDriver::RLCD_Display() {
+    if (!DispBuffer) return;
     RLCD_SendCommand(0x2A);
     RLCD_SendData(0x12);
     RLCD_SendData(0x2A);

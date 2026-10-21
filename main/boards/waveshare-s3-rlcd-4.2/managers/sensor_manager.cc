@@ -1,8 +1,19 @@
 #include "sensor_manager.h"
+#if __has_include("../secret_config.h")
 #include "../secret_config.h"
+#endif
+
+// secret_config.h 被 .gitignore 忽略，缺失时用默认值兜底
+#ifndef TIMEZONE_STRING
+#define TIMEZONE_STRING "CST-8"
+#endif
+#ifndef NTP_SERVER
+#define NTP_SERVER "ntp.aliyun.com"
+#endif
 #include "esp_log.h"
 #include "esp_sntp.h"
 #include "esp_netif_sntp.h"
+#include <mutex>
 #include <string.h>
 #include <sys/time.h>
 
@@ -28,11 +39,17 @@ void SensorManager::init(i2c_master_bus_handle_t bus_handle) {
     dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
     dev_cfg.device_address = SHTC3_ADDR;
     dev_cfg.scl_speed_hz = 100000;
-    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle_, &dev_cfg, &shtc3_handle_));
+    if (i2c_master_bus_add_device(bus_handle_, &dev_cfg, &shtc3_handle_) != ESP_OK) {
+        ESP_LOGE(TAG, "SHTC3 传感器未找到（I2C 0x%02X），温湿度不可用", SHTC3_ADDR);
+        shtc3_handle_ = nullptr;
+    }
 
     // 添加 PCF85063 RTC 时钟到 I2C 总线
     dev_cfg.device_address = PCF85063_ADDR;
-    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle_, &dev_cfg, &pcf85063_handle_));
+    if (i2c_master_bus_add_device(bus_handle_, &dev_cfg, &pcf85063_handle_) != ESP_OK) {
+        ESP_LOGE(TAG, "PCF85063 RTC 未找到（I2C 0x%02X），RTC 不可用", PCF85063_ADDR);
+        pcf85063_handle_ = nullptr;
+    }
 
     initSHTC3();
     initRTC();
@@ -45,9 +62,11 @@ void SensorManager::init(i2c_master_bus_handle_t bus_handle) {
     // 启动时从硬件 RTC 恢复系统时间
     // 这样即使没有网络，系统也能显示上次同步的时间
     // 注意：RTC 存的是本地时间（CST+8），mktime 会根据已设置的时区转成 epoch
-    struct tm ti;
-    getRtcTime(&ti);
-    time_t t = mktime(&ti);
+    struct tm ti{};
+    time_t t = 0;
+    if (getRtcTime(&ti)) {   // 读取失败时 ti 保持全 0，绝不能拿去 mktime
+        t = mktime(&ti);
+    }
     if (t > 1700000000) { // 检查 RTC 是否有有效时间（2023年以后）
         struct timeval tv = { .tv_sec = t, .tv_usec = 0 };
         settimeofday(&tv, NULL);
@@ -59,18 +78,29 @@ void SensorManager::init(i2c_master_bus_handle_t bus_handle) {
 }
 
 void SensorManager::initSHTC3() {
+    if (!shtc3_handle_) return;
     // SHTC3 软件复位命令
     uint8_t cmd[] = {0x35, 0x17}; 
-    i2c_master_transmit(shtc3_handle_, cmd, sizeof(cmd), pdMS_TO_TICKS(100));
+    if (i2c_master_transmit(shtc3_handle_, cmd, sizeof(cmd), pdMS_TO_TICKS(100)) != ESP_OK) {
+        ESP_LOGW(TAG, "SHTC3 复位命令发送失败");
+    }
 }
 
 void SensorManager::initRTC() {
+    if (!pcf85063_handle_) return;
     // PCF85063 控制寄存器初始化
     uint8_t cmd[] = {0x00, 0x00}; 
-    i2c_master_transmit(pcf85063_handle_, cmd, sizeof(cmd), pdMS_TO_TICKS(100));
+    if (i2c_master_transmit(pcf85063_handle_, cmd, sizeof(cmd), pdMS_TO_TICKS(100)) != ESP_OK) {
+        ESP_LOGW(TAG, "PCF85063 初始化命令发送失败");
+    }
 }
 
 void SensorManager::syncNtpTime() {
+    // esp_netif_sntp_init/deinit 不可重入：DataUpdateTask 与按键刷新可能同时调用，
+    // 用互斥量串行化，避免一个 deinit 掉另一个正在等待的句柄
+    static std::mutex ntp_mutex;
+    std::lock_guard<std::mutex> ntp_lock(ntp_mutex);
+
     // 同步前确保时区设置正确（防止被 ota.cc 的 settimeofday 等操作干扰）
     setenv("TZ", TIMEZONE_STRING, 1);
     tzset();
@@ -127,19 +157,22 @@ SensorData SensorManager::getTempHumidity() {
 static uint8_t bcd2dec(uint8_t val) { return (val >> 4) * 10 + (val & 0x0f); }
 static uint8_t dec2bcd(uint8_t val) { return ((val / 10) << 4) + (val % 10); }
 
-void SensorManager::getRtcTime(struct tm *timeinfo) {
-    if (!pcf85063_handle_) return;
+bool SensorManager::getRtcTime(struct tm *timeinfo) {
+    if (!pcf85063_handle_) return false;
     uint8_t buf[7];
     uint8_t reg = 0x04;
-    if (i2c_master_transmit_receive(pcf85063_handle_, &reg, 1, buf, 7, pdMS_TO_TICKS(100)) == ESP_OK) {
-        timeinfo->tm_sec  = bcd2dec(buf[0] & 0x7F);
-        timeinfo->tm_min  = bcd2dec(buf[1] & 0x7F);
-        timeinfo->tm_hour = bcd2dec(buf[2] & 0x3F);
-        timeinfo->tm_mday = bcd2dec(buf[3] & 0x3F);
-        timeinfo->tm_wday = bcd2dec(buf[4] & 0x07);
-        timeinfo->tm_mon  = bcd2dec(buf[5] & 0x1F) - 1;
-        timeinfo->tm_year = bcd2dec(buf[6]) + 100;
+    if (i2c_master_transmit_receive(pcf85063_handle_, &reg, 1, buf, 7, pdMS_TO_TICKS(100)) != ESP_OK) {
+        return false;
     }
+    timeinfo->tm_sec  = bcd2dec(buf[0] & 0x7F);
+    timeinfo->tm_min  = bcd2dec(buf[1] & 0x7F);
+    timeinfo->tm_hour = bcd2dec(buf[2] & 0x3F);
+    timeinfo->tm_mday = bcd2dec(buf[3] & 0x3F);
+    timeinfo->tm_wday = bcd2dec(buf[4] & 0x07);
+    timeinfo->tm_mon  = bcd2dec(buf[5] & 0x1F) - 1;
+    timeinfo->tm_year = bcd2dec(buf[6]) + 100;
+    timeinfo->tm_isdst = 0;  // 中国无夏令时，避免 mktime 用栈上垃圾值
+    return true;
 }
 
 void SensorManager::setRtcTime(struct tm *timeinfo) {

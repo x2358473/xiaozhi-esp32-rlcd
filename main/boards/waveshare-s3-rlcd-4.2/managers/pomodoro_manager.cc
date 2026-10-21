@@ -1,6 +1,7 @@
 #include "pomodoro_manager.h"
 #include "sdcard_manager.h"
 #include <esp_log.h>
+#include <esp_timer.h>
 #include "esp_audio_dec_default.h"
 #include "esp_audio_simple_dec.h"
 #include "esp_audio_simple_dec_default.h"
@@ -18,7 +19,24 @@ bool PomodoroManager::start(int minutes, bool white_noise) {
     // 如果已经在运行，先停止
     if (state_.load() != IDLE) {
         stop();
-        vTaskDelay(pdMS_TO_TICKS(500));  // 等待旧任务清理
+    }
+    // 无论是否刚调用 stop，都要等旧任务真正退出，
+    // 否则新任务设成 COUNTING 后旧任务会继续跑，出现两个倒计时任务
+    for (int i = 0; i < 10; ++i) {
+        {
+            std::lock_guard<std::mutex> lock(task_handle_mutex_);
+            if (pomodoro_task_handle_ == nullptr) break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+
+    // 旧任务仍未退出时直接拒绝启动：否则 state 设为 COUNTING 后旧任务也会继续跑
+    {
+        std::lock_guard<std::mutex> lock(task_handle_mutex_);
+        if (pomodoro_task_handle_ != nullptr) {
+            ESP_LOGW(TAG, "旧倒计时任务尚未退出，忽略本次启动");
+            return false;
+        }
     }
 
     minutes_ = minutes;
@@ -26,20 +44,34 @@ bool PomodoroManager::start(int minutes, bool white_noise) {
 
     int total_secs = minutes * 60;
     stop_requested_.store(false);
-    noise_stop_requested_.store(false);
     remaining_seconds_.store(total_secs);
     total_seconds_.store(total_secs);
     state_.store(COUNTING);
 
     // 启动倒计时主任务
-    xTaskCreatePinnedToCore(PomodoroTask, "pomodoro_task", 4 * 1024, this, 2, &pomodoro_task_handle_, 0);
+    if (xTaskCreatePinnedToCore(PomodoroTask, "pomodoro_task", 4 * 1024, this, 2, &pomodoro_task_handle_, 0) != pdPASS) {
+        ESP_LOGE(TAG, "倒计时任务创建失败（内存不足）");
+        pomodoro_task_handle_ = nullptr;
+        state_.store(IDLE);
+        return false;
+    }
 
     // 启动白噪音播放
     if (white_noise && SdcardManager::getInstance().isMounted()) {
         auto files = scanWhiteNoiseFiles();
         if (!files.empty()) {
             // 白噪音任务用较低优先级，避免影响 UI 与语音主流程
-            xTaskCreatePinnedToCore(WhiteNoiseTask, "white_noise", 8 * 1024, this, 1, &noise_task_handle_, 0);
+            std::lock_guard<std::mutex> lock(task_handle_mutex_);
+            if (noise_task_handle_ != nullptr) {
+                // 旧任务仍在退出过程中：绝不能覆盖句柄，否则两个任务会同时写 I2S
+                ESP_LOGW(TAG, "旧白噪音任务尚未退出，跳过本次创建");
+            } else {
+                noise_stop_requested_.store(false);  // 确认旧任务已退出后才清除停止标志
+                if (xTaskCreatePinnedToCore(WhiteNoiseTask, "white_noise", 8 * 1024, this, 1, &noise_task_handle_, 0) != pdPASS) {
+                    ESP_LOGE(TAG, "白噪音任务创建失败（内存不足）");
+                    noise_task_handle_ = nullptr;
+                }
+            }
         } else {
             ESP_LOGW(TAG, "SD 卡 %s 目录下没有找到 MP3 文件，跳过白噪音", WHITE_NOISE_DIR);
         }
@@ -58,13 +90,14 @@ void PomodoroManager::stop() {
     remaining_seconds_.store(0);
     total_seconds_.store(0);
 
-    // 等待任务退出
-    if (pomodoro_task_handle_) {
-        int wait_count = 0;
-        while (pomodoro_task_handle_ && wait_count < 20) {
-            vTaskDelay(pdMS_TO_TICKS(100));
-            wait_count++;
+    // 等待任务退出（限 300ms：stop 会被 MCP 工具同步调用，不能长时间阻塞语音链路；
+    // 旧任务一定会看到 IDLE 自行退出，start() 里还有二次等待兜底）
+    for (int wait_count = 0; wait_count < 3; ++wait_count) {
+        {
+            std::lock_guard<std::mutex> lock(task_handle_mutex_);
+            if (pomodoro_task_handle_ == nullptr) break;
         }
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 
     ESP_LOGI(TAG, "番茄钟已停止");
@@ -82,9 +115,17 @@ void PomodoroManager::togglePause() {
         if (play_white_noise_ && SdcardManager::getInstance().isMounted()) {
             noise_stop_requested_.store(false);
             auto files = scanWhiteNoiseFiles();
-            if (!files.empty() && noise_task_handle_ == nullptr) {
+            if (!files.empty()) {
                 // 白噪音任务用较低优先级，避免影响 UI 与语音主流程
-                xTaskCreatePinnedToCore(WhiteNoiseTask, "white_noise", 8 * 1024, this, 1, &noise_task_handle_, 0);
+                std::lock_guard<std::mutex> lock(task_handle_mutex_);
+                if (noise_task_handle_ == nullptr) {
+                    if (xTaskCreatePinnedToCore(WhiteNoiseTask, "white_noise", 8 * 1024, this, 1, &noise_task_handle_, 0) != pdPASS) {
+                        ESP_LOGE(TAG, "白噪音任务创建失败（内存不足）");
+                        noise_task_handle_ = nullptr;
+                    }
+                } else {
+                    ESP_LOGW(TAG, "旧白噪音任务尚未退出，跳过恢复");
+                }
             }
         }
         ESP_LOGI(TAG, "番茄钟已恢复");
@@ -121,10 +162,14 @@ std::vector<std::string> PomodoroManager::scanWhiteNoiseFiles() {
 
 void PomodoroManager::stopWhiteNoise() {
     noise_stop_requested_.store(true);
-    int wait_count = 0;
-    while (noise_task_handle_ && wait_count < 30) {
+    // 最多等 1.5s：任务可能阻塞在 SD 读取或 I2S 写入，超时就交给 start()/togglePause()
+    // 里的判空逻辑兜底，避免把 MCP 回调和语音链路一起卡死
+    for (int wait_count = 0; wait_count < 15; ++wait_count) {
+        {
+            std::lock_guard<std::mutex> lock(task_handle_mutex_);
+            if (noise_task_handle_ == nullptr) return;
+        }
         vTaskDelay(pdMS_TO_TICKS(100));
-        wait_count++;
     }
 }
 
@@ -135,32 +180,39 @@ void PomodoroManager::PomodoroTask(void* arg) {
 
     ESP_LOGI(TAG, "倒计时任务启动，共 %d 秒", self->remaining_seconds_.load());
 
+    // 用墙钟差值累计已过时间：暂停期间不累加，避免 vTaskDelay 累加漂移和少算 1 秒
+    int64_t elapsed_ms = 0;
+    int64_t last_us = esp_timer_get_time();
+
     while (!self->stop_requested_.load()) {
         State current = self->state_.load();
-
-        if (current == PAUSED) {
-            // 暂停状态，不倒计时
-            vTaskDelay(pdMS_TO_TICKS(500));
-            continue;
-        }
 
         if (current == IDLE) {
             break;
         }
 
-        // 每秒倒计时
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        // 200ms 轮询：暂停/停止响应更快
+        vTaskDelay(pdMS_TO_TICKS(200));
 
         if (self->stop_requested_.load()) break;
-        if (self->state_.load() == PAUSED) continue;
 
-        int remaining = self->remaining_seconds_.load();
-        if (remaining > 0) {
-            self->remaining_seconds_.store(remaining - 1);
+        const int64_t now_us = esp_timer_get_time();
+        const int64_t delta_ms = (now_us - last_us) / 1000;
+        last_us = now_us;
+
+        if (self->state_.load() != COUNTING) {
+            continue;  // 暂停期间不累计时间
         }
 
+        elapsed_ms += delta_ms;
+
+        const int total = self->total_seconds_.load();
+        int remaining = total - static_cast<int>(elapsed_ms / 1000);
+        if (remaining < 0) remaining = 0;
+        self->remaining_seconds_.store(remaining);
+
         // 倒计时结束
-        if (remaining <= 1) {
+        if (remaining == 0) {
             ESP_LOGI(TAG, "倒计时结束！");
 
             // 停止白噪音
@@ -180,7 +232,12 @@ void PomodoroManager::PomodoroTask(void* arg) {
         }
     }
 
-    self->pomodoro_task_handle_ = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(self->task_handle_mutex_);
+        if (self->pomodoro_task_handle_ == xTaskGetCurrentTaskHandle()) {
+            self->pomodoro_task_handle_ = nullptr;
+        }
+    }
     ESP_LOGI(TAG, "倒计时任务退出");
     vTaskDelete(nullptr);
 }
@@ -199,7 +256,12 @@ void PomodoroManager::WhiteNoiseTask(void* arg) {
     auto files = self->scanWhiteNoiseFiles();
     if (files.empty()) {
         ESP_LOGW(TAG, "没有找到白噪音文件");
-        self->noise_task_handle_ = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(self->task_handle_mutex_);
+            if (self->noise_task_handle_ == xTaskGetCurrentTaskHandle()) {
+                self->noise_task_handle_ = nullptr;
+            }
+        }
         vTaskDelete(nullptr);
         return;
     }
@@ -456,7 +518,12 @@ cleanup:
         codec->EnableOutput(false);
     }
 
-    self->noise_task_handle_ = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(self->task_handle_mutex_);
+        if (self->noise_task_handle_ == xTaskGetCurrentTaskHandle()) {
+            self->noise_task_handle_ = nullptr;
+        }
+    }
     ESP_LOGI(TAG, "白噪音播放任务退出");
     vTaskDelete(nullptr);
 }

@@ -2,6 +2,7 @@
 #define __POMODORO_MANAGER_H__
 
 #include <atomic>
+#include <mutex>
 #include <string>
 #include <vector>
 #include <freertos/FreeRTOS.h>
@@ -92,6 +93,9 @@ private:
 
     TaskHandle_t pomodoro_task_handle_ = nullptr;
     TaskHandle_t noise_task_handle_ = nullptr;
+
+    // 保护 task handle 的创建/退出，避免旧任务退出时清掉新任务句柄
+    std::mutex task_handle_mutex_;
 };
 
 #endif

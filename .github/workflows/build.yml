@@ -17,7 +17,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   prepare:
@@ -25,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       variants: ${{ steps.select.outputs.variants }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,6 +39,10 @@ jobs:
         name: Get all variant list
         run: |
           echo "all_variants=$(python scripts/release.py --list-boards --json)" >> $GITHUB_OUTPUT
+
+      - id: version
+        name: Get project version
+        run: echo "version=$(grep -m1 'set(PROJECT_VER' CMakeLists.txt | cut -d'\"' -f2)" >> $GITHUB_OUTPUT
 
       - id: select
         name: Select variants based on changes
@@ -137,9 +142,43 @@ jobs:
           source $IDF_PATH/export.sh
           python scripts/release.py ${{ matrix.board }} --name ${{ matrix.name }}
 
+      - name: Package firmware
+        shell: bash
+        run: cp build/merged-binary.bin xiaozhi_${{ matrix.name }}_${{ github.sha }}.bin
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: xiaozhi_${{ matrix.name }}_${{ github.sha }}.bin
-          path: build/merged-binary.bin
+          path: xiaozhi_${{ matrix.name }}_${{ github.sha }}.bin
           if-no-files-found: error
+
+  publish:
+    name: Publish to GitHub Release
+    needs: [prepare, build]
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.prepare.outputs.variants != '[]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Set release tag
+        id: tag
+        run: echo "tag=v${{ needs.prepare.outputs.version }}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          files: dist/*.bin
+          overwrite_files: true
+          body: |
+            自动构建产物（Build Boards）
+
+            - Commit: `${{ github.sha }}`
+            - Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            - 烧录：解压后使用乐鑫 Flash Download Tool，按 merged-binary 对应地址烧录，或 `esptool.py write_flash 0x0 <bin>`

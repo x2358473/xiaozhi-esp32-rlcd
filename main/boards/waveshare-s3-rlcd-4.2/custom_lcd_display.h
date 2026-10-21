@@ -146,6 +146,9 @@ public:
     
     // 系统信息滚动控制（供 CustomBoard 设置标志，避免 DataUpdateTask 锁竞争）
     void SetShowingSystemInfo(bool showing) { showing_system_info_ = showing; }
+
+    // 退出系统信息滚动模式：恢复聊天标签布局，并强制下一轮刷新时间/日期
+    void ExitSystemInfoMode();
     
     // 省电模式：记录用户活动，唤醒省电模式
     void NotifyUserActivity();

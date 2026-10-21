@@ -57,16 +57,32 @@ bool WeatherManager::updateFromExternal(const std::string& city,
         return false;
     }
 
-    latest_data_.city = city;
-    latest_data_.text = weather_text;
-    latest_data_.temp = temperature;
-    latest_data_.update_time = update_time.empty() ? "mcp" : update_time;
-    latest_data_.valid = true;
+    // 限制长度并按 UTF-8 字符边界截断：AI 可能传很长的地名/描述，
+    // 直接交给 UI 的定长缓冲区会切出半个汉字导致乱码
+    auto clamp_utf8 = [](const std::string& s, size_t max_bytes) {
+        if (s.size() <= max_bytes) return s;
+        size_t n = max_bytes;
+        while (n > 0 && (static_cast<unsigned char>(s[n]) & 0xC0) == 0x80) {
+            --n;
+        }
+        return s.substr(0, n);
+    };
+
+    const std::string safe_city = clamp_utf8(city, 30);
+    const std::string safe_text = clamp_utf8(weather_text, 24);
+    const std::string safe_temp = clamp_utf8(temperature, 12);
+
+    {
+        std::lock_guard<std::mutex> lock(data_mutex_);
+        latest_data_.city = safe_city;
+        latest_data_.text = safe_text;
+        latest_data_.temp = safe_temp;
+        latest_data_.update_time = update_time.empty() ? "mcp" : update_time;
+        latest_data_.valid = true;
+    }
 
     ESP_LOGI(TAG, "天气已由外部写入: %s %s %s°C",
-             latest_data_.city.c_str(),
-             latest_data_.text.c_str(),
-             latest_data_.temp.c_str());
+             safe_city.c_str(), safe_text.c_str(), safe_temp.c_str());
     return true;
 }
 
@@ -223,7 +239,8 @@ bool WeatherManager::update() {
     if (err == ESP_OK && status_code == 200 && response_len > 0) {
         int d_len = 0;
         const char* final_json = NULL;
-        if (decompress_gzip_safe((uint8_t*)response_buffer, response_len, 
+        if (decompressed_buffer && 
+            decompress_gzip_safe((uint8_t*)response_buffer, response_len, 
                                   decompressed_buffer, DECOMPRESSED_BUFFER_SIZE, &d_len)) {
             final_json = decompressed_buffer;
         } else {
@@ -233,6 +250,7 @@ bool WeatherManager::update() {
 
         if (final_json) {
             parseWeatherJson(final_json);
+            std::lock_guard<std::mutex> lock(data_mutex_);
             latest_data_.city = city_name;
             success = latest_data_.valid;
         }
@@ -247,14 +265,19 @@ void WeatherManager::parseWeatherJson(const char* json_data) {
     cJSON *root = cJSON_Parse(json_data);
     if (!root) return;
     cJSON *code = cJSON_GetObjectItem(root, "code");
-    if (code && strcmp(code->valuestring, "200") == 0) {
-        cJSON *now = cJSON_GetObjectItem(root, "now");
-        if (now) {
-            latest_data_.temp = cJSON_GetObjectItem(now, "temp")->valuestring;
-            latest_data_.text = cJSON_GetObjectItem(now, "text")->valuestring;
+    cJSON *now = cJSON_GetObjectItem(root, "now");
+    cJSON *temp = now ? cJSON_GetObjectItem(now, "temp") : nullptr;
+    cJSON *text = now ? cJSON_GetObjectItem(now, "text") : nullptr;
+
+    if (cJSON_IsString(code) && strcmp(code->valuestring, "200") == 0 &&
+        cJSON_IsString(temp) && cJSON_IsString(text)) {
+        {
+            std::lock_guard<std::mutex> lock(data_mutex_);
+            latest_data_.temp = temp->valuestring;
+            latest_data_.text = text->valuestring;
             latest_data_.valid = true;
-            ESP_LOGI(TAG, "天气更新成功: %s°C, %s", latest_data_.temp.c_str(), latest_data_.text.c_str());
         }
+        ESP_LOGI(TAG, "天气更新成功: %s°C, %s", temp->valuestring, text->valuestring);
     }
     cJSON_Delete(root);
 }

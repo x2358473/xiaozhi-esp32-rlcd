@@ -37,7 +37,8 @@ void CustomLcdDisplay::SetupWeatherUI() {
     DisplayLockGuard lock(this);
     
     lv_obj_t *root = lv_screen_active();
-    lv_obj_set_style_bg_color(root, lv_color_black(), 0);
+    // A1 电子纸杂志风：全屏白底，靠细线与留白分区（不再用大面积纯黑）
+    lv_obj_set_style_bg_color(root, lv_color_white(), 0);
     weather_page_ = lv_obj_create(root);
     lv_obj_set_size(weather_page_, 400, 300);
     lv_obj_set_pos(weather_page_, 0, 0);
@@ -56,13 +57,13 @@ void CustomLcdDisplay::SetupWeatherUI() {
     // 小智完整字库（7415 常用汉字，AI 对话区域专用）
     const lv_font_t *font_ai     = &font_puhui_16_4;
 
-    // ===== 状态栏（右上角白底胶囊）=====
+    // ===== 状态栏（右上角，白底上直接排图标与电量）=====
     lv_obj_t *status_bar = lv_obj_create(screen);
     lv_obj_set_size(status_bar, 115, 28);
-    lv_obj_set_style_bg_opa(status_bar, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(status_bar, lv_color_white(), 0);
+    // 白底上不需要白色胶囊底，直接透明对齐到右上
+    lv_obj_set_style_bg_opa(status_bar, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(status_bar, 0, 0);
-    lv_obj_set_style_radius(status_bar, 14, 0);
+    lv_obj_set_style_radius(status_bar, 0, 0);
     lv_obj_align(status_bar, LV_ALIGN_TOP_RIGHT, -8, 4);
     lv_obj_set_style_pad_all(status_bar, 0, 0);
     lv_obj_set_style_pad_left(status_bar, 8, 0);
@@ -86,11 +87,12 @@ void CustomLcdDisplay::SetupWeatherUI() {
     lv_obj_set_style_text_color(battery_pct_label_, lv_color_black(), 0);
     lv_label_set_text(battery_pct_label_, "---%");
 
-    // ===== 左上角温湿度（白字，直接在黑底上）=====
+    // ===== 左上角温湿度（黑字，直接排在白底上）=====
     sensor_label_ = lv_label_create(screen);
     lv_obj_set_style_text_font(sensor_label_, font_small, 0);
-    lv_obj_set_style_text_color(sensor_label_, lv_color_white(), 0);
-    lv_obj_align(sensor_label_, LV_ALIGN_TOP_LEFT, 10, 8);
+    lv_obj_set_style_text_color(sensor_label_, lv_color_black(), 0);
+    lv_obj_set_style_text_letter_space(sensor_label_, 1, 0);
+    lv_obj_align(sensor_label_, LV_ALIGN_TOP_LEFT, 10, 6);
     lv_label_set_text(sensor_label_, "--.-°C  --.-%");
 
     // ===== 2×2 卡片网格布局 =====
@@ -110,9 +112,9 @@ void CustomLcdDisplay::SetupWeatherUI() {
     lv_obj_t *time_card = lv_obj_create(screen);
     lv_obj_set_pos(time_card, pad, top_y);
     lv_obj_set_size(time_card, left_w, top_row_h);
-    lv_obj_set_style_border_width(time_card, 2, 0);
+    lv_obj_set_style_border_width(time_card, 1, 0);
     lv_obj_set_style_border_color(time_card, lv_color_black(), 0);
-    lv_obj_set_style_radius(time_card, 15, 0);
+    lv_obj_set_style_radius(time_card, 4, 0);
     lv_obj_set_style_bg_color(time_card, lv_color_white(), 0);
     lv_obj_set_style_pad_all(time_card, 0, 0);
     lv_obj_remove_flag(time_card, LV_OBJ_FLAG_SCROLLABLE);
@@ -128,10 +130,10 @@ void CustomLcdDisplay::SetupWeatherUI() {
     lv_obj_t *time_inner = lv_obj_create(time_card);
     lv_obj_set_size(time_inner, left_w - 14, top_row_h - 14);
     lv_obj_center(time_inner);
+    // A1：去掉内层双线框，只保留外层 1px 细线，避免"证件照"式的厚重边框
     lv_obj_set_style_bg_opa(time_inner, 0, 0);
-    lv_obj_set_style_border_width(time_inner, 2, 0);
-    lv_obj_set_style_border_color(time_inner, lv_color_black(), 0);
-    lv_obj_set_style_radius(time_inner, 10, 0);
+    lv_obj_set_style_border_width(time_inner, 0, 0);
+    lv_obj_set_style_radius(time_inner, 0, 0);
     lv_obj_remove_flag(time_inner, LV_OBJ_FLAG_SCROLLABLE);
 
     // --- 右上：日历卡片 ---
@@ -141,17 +143,18 @@ void CustomLcdDisplay::SetupWeatherUI() {
     lv_obj_t *calendar_card = lv_obj_create(screen);
     lv_obj_set_pos(calendar_card, right_x, top_y);
     lv_obj_set_size(calendar_card, right_w, top_row_h);
-    lv_obj_set_style_border_width(calendar_card, 3, 0);
-    lv_obj_set_style_border_color(calendar_card, lv_color_white(), 0);
-    lv_obj_set_style_radius(calendar_card, 15, 0);
-    lv_obj_set_style_bg_color(calendar_card, lv_color_black(), 0);
+    lv_obj_set_style_border_width(calendar_card, 1, 0);
+    lv_obj_set_style_border_color(calendar_card, lv_color_black(), 0);
+    lv_obj_set_style_radius(calendar_card, 4, 0);
+    lv_obj_set_style_bg_color(calendar_card, lv_color_white(), 0);
     lv_obj_set_style_pad_all(calendar_card, 0, 0);
     lv_obj_remove_flag(calendar_card, LV_OBJ_FLAG_SCROLLABLE);
 
     // "TUE" 星期标签
     day_label_ = lv_label_create(calendar_card);
     lv_obj_set_style_text_font(day_label_, font_normal, 0);
-    lv_obj_set_style_text_color(day_label_, lv_color_white(), 0);
+    lv_obj_set_style_text_color(day_label_, lv_color_black(), 0);
+    lv_obj_set_style_text_letter_space(day_label_, 2, 0);
     lv_obj_align(day_label_, LV_ALIGN_TOP_MID, 0, 8);
     lv_label_set_text(day_label_, "---");
 
@@ -160,9 +163,10 @@ void CustomLcdDisplay::SetupWeatherUI() {
     lv_obj_t *date_area = lv_obj_create(calendar_card);
     lv_obj_set_pos(date_area, 6, day_header_h);
     lv_obj_set_size(date_area, right_w - 18, date_area_h);
-    lv_obj_set_style_bg_color(date_area, lv_color_white(), 0);
+    // 白底上不再需要白色底块，直接让数字落在卡片上
+    lv_obj_set_style_bg_opa(date_area, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(date_area, 0, 0);
-    lv_obj_set_style_radius(date_area, 10, 0);
+    lv_obj_set_style_radius(date_area, 0, 0);
     lv_obj_set_style_pad_all(date_area, 0, 0);
     lv_obj_remove_flag(date_area, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -176,10 +180,11 @@ void CustomLcdDisplay::SetupWeatherUI() {
     // 天气标签
     weather_label_ = lv_label_create(calendar_card);
     lv_obj_set_style_text_font(weather_label_, font_small, 0);
-    lv_obj_set_style_text_color(weather_label_, lv_color_white(), 0);
+    lv_obj_set_style_text_color(weather_label_, lv_color_black(), 0);
     lv_obj_set_style_text_align(weather_label_, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(weather_label_, LV_ALIGN_BOTTOM_MID, 0, -6);
-    lv_label_set_text(weather_label_, "-- --°C");
+    // 无数据时不要显示 "-- --°C" 这种"坏掉"的占位
+    lv_label_set_text(weather_label_, "");
 
     // --- 左下：AI 对话卡片（小智接管这里）---
     // 布局：[左侧表情区 64px | 分隔线 | 右侧对话文字区]
@@ -188,9 +193,9 @@ void CustomLcdDisplay::SetupWeatherUI() {
     chat_card_ = lv_obj_create(screen);
     lv_obj_set_pos(chat_card_, pad, bot_y);
     lv_obj_set_size(chat_card_, bot_card_w, bot_row_h);
-    lv_obj_set_style_border_width(chat_card_, 2, 0);
+    lv_obj_set_style_border_width(chat_card_, 1, 0);
     lv_obj_set_style_border_color(chat_card_, lv_color_black(), 0);
-    lv_obj_set_style_radius(chat_card_, 15, 0);
+    lv_obj_set_style_radius(chat_card_, 4, 0);
     lv_obj_set_style_bg_color(chat_card_, lv_color_white(), 0);
     lv_obj_set_style_pad_all(chat_card_, 0, 0);
     lv_obj_remove_flag(chat_card_, LV_OBJ_FLAG_SCROLLABLE);
@@ -201,9 +206,9 @@ void CustomLcdDisplay::SetupWeatherUI() {
     lv_obj_set_size(chat_inner, bot_card_w - 14, bot_row_h - 14);
     lv_obj_center(chat_inner);
     lv_obj_set_style_bg_opa(chat_inner, 0, 0);
-    lv_obj_set_style_border_width(chat_inner, 2, 0);
-    lv_obj_set_style_border_color(chat_inner, lv_color_black(), 0);
-    lv_obj_set_style_radius(chat_inner, 10, 0);
+    // A1：去掉内层双线框，只保留外层细线
+    lv_obj_set_style_border_width(chat_inner, 0, 0);
+    lv_obj_set_style_radius(chat_inner, 0, 0);
     lv_obj_set_style_pad_all(chat_inner, 0, 0);  // 重要：清除内边距，让子元素可以精确定位
     lv_obj_remove_flag(chat_inner, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_clip_corner(chat_inner, true, 0);  // 🔑 裁剪内边框，防止文字溢出
@@ -225,13 +230,13 @@ void CustomLcdDisplay::SetupWeatherUI() {
     lv_obj_align(emotion_label_, LV_ALIGN_LEFT_MID, 8, 28);
     lv_label_set_text(emotion_label_, "待命");
 
-    // 竖分隔线
-    lv_obj_t *divider = lv_obj_create(chat_inner);  // 父容器改为 chat_inner
-    lv_obj_set_size(divider, 2, bot_row_h - 30);
+    // A1：去掉从顶贯到底的粗竖分隔线，AI 区作为一个整体由留白分隔
+    lv_obj_t *divider = lv_obj_create(chat_inner);
+    lv_obj_set_size(divider, 1, bot_row_h - 44);
     lv_obj_set_style_bg_color(divider, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(divider, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(divider, 0, 0);
-    lv_obj_set_style_radius(divider, 1, 0);
+    lv_obj_set_style_radius(divider, 0, 0);
     lv_obj_align(divider, LV_ALIGN_LEFT_MID, emotion_w + 14, 0);
     lv_obj_remove_flag(divider, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -251,17 +256,18 @@ void CustomLcdDisplay::SetupWeatherUI() {
     lv_obj_t *memo_card = lv_obj_create(screen);
     lv_obj_set_pos(memo_card, pad + bot_card_w + gap, bot_y);
     lv_obj_set_size(memo_card, music_card_w, bot_row_h);
-    lv_obj_set_style_border_width(memo_card, 2, 0);
+    lv_obj_set_style_border_width(memo_card, 1, 0);
     lv_obj_set_style_border_color(memo_card, lv_color_black(), 0);
-    lv_obj_set_style_radius(memo_card, 15, 0);
+    lv_obj_set_style_radius(memo_card, 4, 0);
     lv_obj_set_style_bg_color(memo_card, lv_color_white(), 0);
-    lv_obj_set_style_pad_all(memo_card, 6, 0);
+    lv_obj_set_style_pad_all(memo_card, 8, 0);
     lv_obj_remove_flag(memo_card, LV_OBJ_FLAG_SCROLLABLE);
 
     // 顶部标题 "MEMO"
     lv_obj_t *memo_title = lv_label_create(memo_card);
     lv_obj_set_style_text_font(memo_title, font_small, 0);
     lv_obj_set_style_text_color(memo_title, lv_color_black(), 0);
+    lv_obj_set_style_text_letter_space(memo_title, 3, 0);
     lv_obj_align(memo_title, LV_ALIGN_TOP_LEFT, 2, 0);
     lv_label_set_text(memo_title, "MEMO");
 
@@ -321,9 +327,9 @@ void CustomLcdDisplay::SetupWeatherUI() {
     lv_obj_align(low_battery_popup_, LV_ALIGN_BOTTOM_MID, 0, -10);
     lv_obj_set_style_bg_color(low_battery_popup_, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(low_battery_popup_, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(low_battery_popup_, 2, 0);
+    lv_obj_set_style_border_width(low_battery_popup_, 1, 0);
     lv_obj_set_style_border_color(low_battery_popup_, lv_color_black(), 0);
-    lv_obj_set_style_radius(low_battery_popup_, 12, 0);
+    lv_obj_set_style_radius(low_battery_popup_, 4, 0);
     lv_obj_set_style_pad_all(low_battery_popup_, 6, 0);
     lv_obj_remove_flag(low_battery_popup_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(low_battery_popup_, LV_OBJ_FLAG_HIDDEN);

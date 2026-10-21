@@ -50,11 +50,11 @@ void CustomLcdDisplay::SetupPomodoroUI() {
     const int SCR_H = 300;
     const int PAD = 12;
 
-    // ===== 番茄钟页面容器（全屏黑底，初始隐藏）=====
+    // ===== 番茄钟页面容器（A1 白底，初始隐藏）=====
     pomodoro_page_ = lv_obj_create(root);
     lv_obj_set_size(pomodoro_page_, SCR_W, SCR_H);
     lv_obj_set_pos(pomodoro_page_, 0, 0);
-    lv_obj_set_style_bg_color(pomodoro_page_, lv_color_black(), 0);
+    lv_obj_set_style_bg_color(pomodoro_page_, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(pomodoro_page_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(pomodoro_page_, 0, 0);
     lv_obj_set_style_pad_all(pomodoro_page_, 0, 0);
@@ -71,14 +71,14 @@ void CustomLcdDisplay::SetupPomodoroUI() {
     // 左上角时钟
     pomo_time_label_ = lv_label_create(page);
     lv_obj_set_style_text_font(pomo_time_label_, font_time, 0);
-    lv_obj_set_style_text_color(pomo_time_label_, lv_color_white(), 0);
+    lv_obj_set_style_text_color(pomo_time_label_, lv_color_black(), 0);
     lv_obj_align(pomo_time_label_, LV_ALIGN_TOP_LEFT, 10, 5);
     lv_label_set_text(pomo_time_label_, "00:00");
 
     // 温湿度
     pomo_sensor_label_ = lv_label_create(page);
     lv_obj_set_style_text_font(pomo_sensor_label_, font_sm, 0);
-    lv_obj_set_style_text_color(pomo_sensor_label_, lv_color_white(), 0);
+    lv_obj_set_style_text_color(pomo_sensor_label_, lv_color_black(), 0);
     lv_obj_set_style_text_opa(pomo_sensor_label_, LV_OPA_60, 0);
     lv_obj_align(pomo_sensor_label_, LV_ALIGN_TOP_LEFT, 80, 11);
     lv_label_set_text(pomo_sensor_label_, "--.-°C --.-%");
@@ -86,10 +86,10 @@ void CustomLcdDisplay::SetupPomodoroUI() {
     // 右上角状态栏胶囊
     lv_obj_t *status_bar = lv_obj_create(page);
     lv_obj_set_size(status_bar, 115, 28);
-    lv_obj_set_style_bg_opa(status_bar, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(status_bar, lv_color_white(), 0);
+    // 白底上不需要白色胶囊底
+    lv_obj_set_style_bg_opa(status_bar, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(status_bar, 0, 0);
-    lv_obj_set_style_radius(status_bar, 14, 0);
+    lv_obj_set_style_radius(status_bar, 0, 0);
     lv_obj_align(status_bar, LV_ALIGN_TOP_RIGHT, -8, 4);
     lv_obj_set_style_pad_left(status_bar, 8, 0);
     lv_obj_set_style_pad_right(status_bar, 8, 0);
@@ -113,7 +113,7 @@ void CustomLcdDisplay::SetupPomodoroUI() {
 
     pomo_state_label_ = lv_label_create(page);
     lv_obj_set_style_text_font(pomo_state_label_, font_cn, 0);
-    lv_obj_set_style_text_color(pomo_state_label_, lv_color_white(), 0);
+    lv_obj_set_style_text_color(pomo_state_label_, lv_color_black(), 0);
     lv_obj_set_style_text_align(pomo_state_label_, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(pomo_state_label_, SCR_W);
     lv_label_set_text(pomo_state_label_, "番茄钟 · 准备就绪");
@@ -125,7 +125,7 @@ void CustomLcdDisplay::SetupPomodoroUI() {
 
     pomo_countdown_label_ = lv_label_create(page);
     lv_obj_set_style_text_font(pomo_countdown_label_, font_big, 0);
-    lv_obj_set_style_text_color(pomo_countdown_label_, lv_color_white(), 0);
+    lv_obj_set_style_text_color(pomo_countdown_label_, lv_color_black(), 0);
     lv_obj_set_style_text_align(pomo_countdown_label_, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_text(pomo_countdown_label_, "25:00");
     lv_obj_align(pomo_countdown_label_, LV_ALIGN_CENTER, 0, -30);
@@ -143,11 +143,11 @@ void CustomLcdDisplay::SetupPomodoroUI() {
     lv_bar_set_range(pomo_progress_bar_, 0, 1000);
     lv_bar_set_value(pomo_progress_bar_, 0, LV_ANIM_OFF);
 
-    // 轨道（白色背景 + 白色边框）
+    // 轨道（白底上需要黑色描边才可见）
     lv_obj_set_style_bg_color(pomo_progress_bar_, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(pomo_progress_bar_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(pomo_progress_bar_, 1, 0);
-    lv_obj_set_style_border_color(pomo_progress_bar_, lv_color_white(), 0);
+    lv_obj_set_style_border_color(pomo_progress_bar_, lv_color_black(), 0);
     lv_obj_set_style_radius(pomo_progress_bar_, 6, 0);
     lv_obj_set_style_pad_top(pomo_progress_bar_, 2, 0);
     lv_obj_set_style_pad_bottom(pomo_progress_bar_, 2, 0);
@@ -162,8 +162,8 @@ void CustomLcdDisplay::SetupPomodoroUI() {
     // 设定信息文字（进度条下方）
     pomo_info_label_ = lv_label_create(page);
     lv_obj_set_style_text_font(pomo_info_label_, font_sm, 0);
-    lv_obj_set_style_text_color(pomo_info_label_, lv_color_white(), 0);
-    lv_obj_set_style_text_opa(pomo_info_label_, LV_OPA_60, 0);
+    lv_obj_set_style_text_color(pomo_info_label_, lv_color_black(), 0);
+    lv_obj_set_style_text_opa(pomo_info_label_, LV_OPA_60, 0);  // 60% 黑在白底上即浅灰（抖动网点）
     lv_obj_set_style_text_align(pomo_info_label_, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(pomo_info_label_, SCR_W);
     lv_label_set_text(pomo_info_label_, "25分钟 专注 / 5分钟 休息");
@@ -183,9 +183,9 @@ void CustomLcdDisplay::SetupPomodoroUI() {
     lv_obj_set_pos(ai_card, PAD, ai_y);
     lv_obj_set_style_bg_color(ai_card, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(ai_card, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(ai_card, 2, 0);
+    lv_obj_set_style_border_width(ai_card, 1, 0);
     lv_obj_set_style_border_color(ai_card, lv_color_black(), 0);
-    lv_obj_set_style_radius(ai_card, 16, 0);
+    lv_obj_set_style_radius(ai_card, 4, 0);
     lv_obj_set_style_pad_all(ai_card, 0, 0);
     lv_obj_remove_flag(ai_card, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_clip_corner(ai_card, true, 0);
@@ -208,12 +208,13 @@ void CustomLcdDisplay::SetupPomodoroUI() {
     lv_obj_align(pomo_emotion_label_, LV_ALIGN_LEFT_MID, 4, 20);
 
     // 竖分隔线
+    // A1：竖线改 1px 短分隔，不再从顶贯到底
     lv_obj_t *divider = lv_obj_create(ai_card);
-    lv_obj_set_size(divider, 2, ai_h - 20);
+    lv_obj_set_size(divider, 1, ai_h - 24);
     lv_obj_set_style_bg_color(divider, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(divider, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(divider, 0, 0);
-    lv_obj_set_style_radius(divider, 1, 0);
+    lv_obj_set_style_radius(divider, 0, 0);
     lv_obj_align(divider, LV_ALIGN_LEFT_MID, emotion_w + 10, 0);
     lv_obj_remove_flag(divider, LV_OBJ_FLAG_SCROLLABLE);
 

@@ -18,6 +18,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_log.h>
+#include <esp_timer.h>
+#include <esp_wifi.h>
 
 #include "application.h"
 #include "board.h"
@@ -26,7 +28,24 @@
 #include "managers/sensor_manager.h"
 #include "managers/weather_manager.h"
 #include "managers/pomodoro_manager.h"
+#if __has_include("secret_config.h")
 #include "secret_config.h"
+#endif
+
+// secret_config.h 被 .gitignore 忽略：干净克隆 / CI 环境可能不存在，
+// 这里给出默认值，避免编译中断（天气 API 相关宏当前未被使用）
+#ifndef WEATHER_API_KEY
+#define WEATHER_API_KEY ""
+#endif
+#ifndef WEATHER_API_HOST
+#define WEATHER_API_HOST ""
+#endif
+#ifndef TIMEZONE_STRING
+#define TIMEZONE_STRING "CST-8"
+#endif
+#ifndef NTP_SERVER
+#define NTP_SERVER "ntp.aliyun.com"
+#endif
 
 // 声明状态栏图标（DataUpdateTask 需要更新图标）
 LV_IMAGE_DECLARE(ui_img_wifi);
@@ -48,7 +67,10 @@ void CustomLcdDisplay::StartDataUpdateTask() {
     
     // 栈从 16KB 下调到 8KB，给音频/MQTT 留更多 SRAM 余量
     // 优先级保持较低，避免与语音收发实时链路抢占 CPU
-    xTaskCreate(DataUpdateTask, "weather_ui_update", 8192, this, 2, &update_task_handle_);
+    if (xTaskCreate(DataUpdateTask, "weather_ui_update", 8192, this, 2, &update_task_handle_) != pdPASS) {
+        ESP_LOGE(TAG, "数据更新任务创建失败（内存不足），界面将不再自动刷新");
+        update_task_handle_ = nullptr;
+    }
 }
 
 void CustomLcdDisplay::DataUpdateTask(void *arg) {
@@ -171,6 +193,21 @@ void CustomLcdDisplay::DataUpdateTask(void *arg) {
         time(&now);
         localtime_r(&now, &timeinfo);
         
+        // ===== 系统信息滚动超时保护 =====
+        // 进入系统信息模式后会跳过下方 UI 更新，若不自动退出，
+        // 时钟/温湿度/电量/番茄钟将永久冻结（只能靠 AI 说话或重启恢复）
+        static int64_t system_info_enter_us = 0;
+        if (self->showing_system_info_) {
+            if (system_info_enter_us == 0) {
+                system_info_enter_us = esp_timer_get_time();
+            } else if (esp_timer_get_time() - system_info_enter_us > 30LL * 1000 * 1000) {
+                self->ExitSystemInfoMode();  // 内部置 false 并恢复聊天标签
+                system_info_enter_us = 0;
+            }
+        } else {
+            system_info_enter_us = 0;
+        }
+
         // 记录本轮是否分钟变了（备忘闹钟检查也要用）
         bool minute_changed = (timeinfo.tm_min != self->last_min_);
         
@@ -186,9 +223,11 @@ void CustomLcdDisplay::DataUpdateTask(void *arg) {
                 // 正常每秒循环 drift ≈ 1s，如果绝对值 > 7200s（2小时），肯定异常
                 if (drift < -7200 || drift > 7200) {
                     ESP_LOGW(TAG, "系统时间被篡改（偏差 %ld 秒），从 RTC 恢复", drift);
-                    struct tm rtc_tm;
-                    SensorManager::getInstance().getRtcTime(&rtc_tm);
-                    time_t rtc_epoch = mktime(&rtc_tm);
+                    struct tm rtc_tm{};
+                    time_t rtc_epoch = 0;
+                    if (SensorManager::getInstance().getRtcTime(&rtc_tm)) {
+                        rtc_epoch = mktime(&rtc_tm);
+                    }
                     if (rtc_epoch > 1700000000) {
                         struct timeval tv = { .tv_sec = rtc_epoch, .tv_usec = 0 };
                         settimeofday(&tv, NULL);
@@ -221,6 +260,12 @@ void CustomLcdDisplay::DataUpdateTask(void *arg) {
                 ESP_LOGI(TAG, "时间已更新: %s, %s, %d日", time_buf, weeks_en[timeinfo.tm_wday], timeinfo.tm_mday);
             }
         }  // DisplayLockGuard 自动释放
+
+        // 系统信息模式下跳过了上面的 UI 块，但 last_min_ 仍要推进，
+        // 否则 minute_changed 恒为 true → 备忘检查每秒执行并反复读 NVS
+        if (self->last_min_ != timeinfo.tm_min) {
+            self->last_min_ = timeinfo.tm_min;
+        }
 
         // ===== 备忘闹钟检查（在锁外执行，避免长时间持锁）=====
         if (minute_changed) {
@@ -275,11 +320,11 @@ void CustomLcdDisplay::DataUpdateTask(void *arg) {
                         // 如果有条目被删除，写回 NVS 并刷新屏幕
                         if (memo_changed) {
                             char *new_json = cJSON_PrintUnformatted(memo_arr);
-                            {
+                            if (new_json) {
                                 Settings memo_wr("memo", true);
                                 memo_wr.SetString("items", new_json);
+                                cJSON_free(new_json);
                             }
-                            cJSON_free(new_json);
                             self->RefreshMemoDisplay();  // 这个函数会自动获取锁
                             ESP_LOGI(TAG, "✅ 已过期备忘已自动删除");
                         }
@@ -291,6 +336,8 @@ void CustomLcdDisplay::DataUpdateTask(void *arg) {
 
         // ===== 其他 UI 更新（需要重新获取锁）=====
         // 🔑 如果正在显示系统信息滚动，跳过 UI 更新（避免锁竞争）
+        // 低电量提示音要等 LVGL 锁释放后再播，避免阻塞刷新
+        bool play_low_battery_sound = false;
         if (!self->showing_system_info_) {
             DisplayLockGuard lock(self);
             static uint32_t last_noncritical_ui_update_ms = 0;
@@ -320,7 +367,7 @@ void CustomLcdDisplay::DataUpdateTask(void *arg) {
                 // 3. 天气更新（内容变化时才刷新，避免无效重绘）
                 WeatherData wd = WeatherManager::getInstance().getLatestData();
                 if (wd.valid && self->weather_label_) {
-                    char weather_buf[48];
+                    char weather_buf[96];
                     snprintf(weather_buf, sizeof(weather_buf), "%s %s %s°C",
                              wd.city.c_str(), wd.text.c_str(), wd.temp.c_str());
                     static std::string last_weather_text;
@@ -393,7 +440,7 @@ void CustomLcdDisplay::DataUpdateTask(void *arg) {
                     if (self->low_battery_popup_) {
                         if (!low_battery_popup_visible && should_show_low_battery) {
                             lv_obj_remove_flag(self->low_battery_popup_, LV_OBJ_FLAG_HIDDEN);
-                            app.PlaySound(Lang::Sounds::OGG_LOW_BATTERY);
+                            play_low_battery_sound = true;  // 锁外再播放
                             low_battery_popup_visible = true;
                         } else if (low_battery_popup_visible && should_hide_low_battery) {
                             lv_obj_add_flag(self->low_battery_popup_, LV_OBJ_FLAG_HIDDEN);
@@ -402,14 +449,17 @@ void CustomLcdDisplay::DataUpdateTask(void *arg) {
                     }
                 }
 
-                // 5. WiFi 图标更新（状态变化时才更新）
+                // 5. WiFi 图标更新（按真实连接状态，而不是设备状态推断）
+                wifi_ap_record_t ap_info = {};
+                const bool wifi_connected = (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK);
+                static bool last_wifi_connected = false;
                 static DeviceState last_wifi_state = kDeviceStateUnknown;
-                if (ds != last_wifi_state) {
-                    const void* wifi_src = &ui_img_wifi_off;
-                    if (ds != kDeviceStateStarting && ds != kDeviceStateWifiConfiguring) {
-                        wifi_src = &ui_img_wifi;
-                    } else if (ds == kDeviceStateWifiConfiguring) {
-                        wifi_src = &ui_img_wifi_low;
+                if (wifi_connected != last_wifi_connected || ds != last_wifi_state) {
+                    last_wifi_connected = wifi_connected;
+                    const void* wifi_src = wifi_connected ? (const void*)&ui_img_wifi
+                                                          : (const void*)&ui_img_wifi_off;
+                    if (!wifi_connected && ds == kDeviceStateWifiConfiguring) {
+                        wifi_src = &ui_img_wifi_low;  // 配网中提示弱信号
                     }
                     if (self->wifi_icon_img_) {
                         lv_image_set_src(self->wifi_icon_img_, wifi_src);
@@ -485,6 +535,12 @@ void CustomLcdDisplay::DataUpdateTask(void *arg) {
                 last_ds = ds;
             }
         }  // DisplayLockGuard 自动释放
+
+        // 锁外播放提示音：PlaySound 在解码队列满时会阻塞（最长约 2.4s），
+        // 持锁播放会让整屏停止刷新，并与 TTS 抢同一个解码队列
+        if (play_low_battery_sound) {
+            app.PlaySound(Lang::Sounds::OGG_LOW_BATTERY);
+        }
 
         // ===== 番茄钟 UI 刷新 =====
         // 番茄钟运行时，每秒更新倒计时显示和进度条

@@ -52,11 +52,11 @@ void CustomLcdDisplay::SetupMusicUI() {
     const int SCR_H = 300;
     const int PAD = 12;               // 左右安全边距
 
-    // ===== 音乐页面容器（全屏黑底，初始隐藏）=====
+    // ===== 音乐页面容器（A1 白底，初始隐藏）=====
     music_page_ = lv_obj_create(root);
     lv_obj_set_size(music_page_, SCR_W, SCR_H);
     lv_obj_set_pos(music_page_, 0, 0);
-    lv_obj_set_style_bg_color(music_page_, lv_color_black(), 0);
+    lv_obj_set_style_bg_color(music_page_, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(music_page_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(music_page_, 0, 0);
     lv_obj_set_style_pad_all(music_page_, 0, 0);
@@ -73,14 +73,14 @@ void CustomLcdDisplay::SetupMusicUI() {
     // 左上角时钟
     music_time_label_ = lv_label_create(page);
     lv_obj_set_style_text_font(music_time_label_, font_time, 0);
-    lv_obj_set_style_text_color(music_time_label_, lv_color_white(), 0);
+    lv_obj_set_style_text_color(music_time_label_, lv_color_black(), 0);
     lv_obj_align(music_time_label_, LV_ALIGN_TOP_LEFT, 10, 5);
     lv_label_set_text(music_time_label_, "00:00");
 
     // 温湿度（跟在时钟右边，小字 + 低透明度，区分主次）
     music_sensor_label_ = lv_label_create(page);
     lv_obj_set_style_text_font(music_sensor_label_, font_sm, 0);
-    lv_obj_set_style_text_color(music_sensor_label_, lv_color_white(), 0);
+    lv_obj_set_style_text_color(music_sensor_label_, lv_color_black(), 0);
     lv_obj_set_style_text_opa(music_sensor_label_, LV_OPA_60, 0);
     lv_obj_align(music_sensor_label_, LV_ALIGN_TOP_LEFT, 80, 11);
     lv_label_set_text(music_sensor_label_, "--.-°C --.-%");
@@ -88,10 +88,10 @@ void CustomLcdDisplay::SetupMusicUI() {
     // 右上角状态栏胶囊
     lv_obj_t *status_bar = lv_obj_create(page);
     lv_obj_set_size(status_bar, 115, 28);
-    lv_obj_set_style_bg_opa(status_bar, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(status_bar, lv_color_white(), 0);
+    // 白底上不需要白色胶囊底
+    lv_obj_set_style_bg_opa(status_bar, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(status_bar, 0, 0);
-    lv_obj_set_style_radius(status_bar, 14, 0);
+    lv_obj_set_style_radius(status_bar, 0, 0);
     lv_obj_align(status_bar, LV_ALIGN_TOP_RIGHT, -8, 4);
     lv_obj_set_style_pad_left(status_bar, 8, 0);
     lv_obj_set_style_pad_right(status_bar, 8, 0);
@@ -127,9 +127,9 @@ void CustomLcdDisplay::SetupMusicUI() {
     lv_obj_set_pos(vinyl_card, vinyl_x, content_y);
     lv_obj_set_style_bg_color(vinyl_card, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(vinyl_card, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(vinyl_card, 2, 0);
+    lv_obj_set_style_border_width(vinyl_card, 1, 0);
     lv_obj_set_style_border_color(vinyl_card, lv_color_black(), 0);
-    lv_obj_set_style_radius(vinyl_card, 16, 0);
+    lv_obj_set_style_radius(vinyl_card, 4, 0);
     lv_obj_set_style_pad_all(vinyl_card, 0, 0);
     lv_obj_remove_flag(vinyl_card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -188,9 +188,9 @@ void CustomLcdDisplay::SetupMusicUI() {
     lv_obj_set_pos(info_card, info_x, content_y);
     lv_obj_set_style_bg_color(info_card, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(info_card, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(info_card, 2, 0);
+    lv_obj_set_style_border_width(info_card, 1, 0);
     lv_obj_set_style_border_color(info_card, lv_color_black(), 0);
-    lv_obj_set_style_radius(info_card, 16, 0);
+    lv_obj_set_style_radius(info_card, 4, 0);
     lv_obj_set_style_pad_all(info_card, 10, 0);
     lv_obj_remove_flag(info_card, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_clip_corner(info_card, true, 0);
@@ -220,7 +220,7 @@ void CustomLcdDisplay::SetupMusicUI() {
     lv_obj_t *info_sep = lv_obj_create(info_card);
     lv_obj_set_size(info_sep, info_w - 30, 1);
     lv_obj_set_style_bg_color(info_sep, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(info_sep, LV_OPA_20, 0);
+    lv_obj_set_style_bg_opa(info_sep, LV_OPA_COVER, 0);  // 1px 线用纯黑，避免抖动后断续
     lv_obj_set_style_border_width(info_sep, 0, 0);
     lv_obj_set_style_radius(info_sep, 0, 0);
     lv_obj_align(info_sep, LV_ALIGN_TOP_LEFT, 0, 50);
@@ -276,12 +276,11 @@ void CustomLcdDisplay::SetupMusicUI() {
     lv_bar_set_range(music_progress_bar_, 0, 1000);
     lv_bar_set_value(music_progress_bar_, 0, LV_ANIM_OFF);
 
-    // ── 轨道（白色背景 + 白色边框）──
-    // 在黑底屏上形成醒目的白色外壳
+    // ── 轨道（白底上改成黑色描边，否则看不见轨道轮廓）──
     lv_obj_set_style_bg_color(music_progress_bar_, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(music_progress_bar_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(music_progress_bar_, 1, 0);
-    lv_obj_set_style_border_color(music_progress_bar_, lv_color_white(), 0);
+    lv_obj_set_style_border_color(music_progress_bar_, lv_color_black(), 0);
     lv_obj_set_style_border_opa(music_progress_bar_, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(music_progress_bar_, 6, 0);
     // 关键：给轨道加 padding，让黑色指示器内缩，四周露出白色底
@@ -299,7 +298,7 @@ void CustomLcdDisplay::SetupMusicUI() {
     // 进度时间文字（进度条右侧）
     music_progress_label_ = lv_label_create(page);
     lv_obj_set_style_text_font(music_progress_label_, font_sm, 0);
-    lv_obj_set_style_text_color(music_progress_label_, lv_color_white(), 0);
+    lv_obj_set_style_text_color(music_progress_label_, lv_color_black(), 0);
     lv_obj_set_style_text_opa(music_progress_label_, LV_OPA_70, 0);
     lv_label_set_text(music_progress_label_, "00:00 / 00:00");
     lv_obj_set_pos(music_progress_label_, PAD + bar_w + 8, bar_y + 2);
@@ -319,9 +318,9 @@ void CustomLcdDisplay::SetupMusicUI() {
     lv_obj_set_pos(ai_card, PAD, ai_y);
     lv_obj_set_style_bg_color(ai_card, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(ai_card, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(ai_card, 2, 0);
+    lv_obj_set_style_border_width(ai_card, 1, 0);
     lv_obj_set_style_border_color(ai_card, lv_color_black(), 0);
-    lv_obj_set_style_radius(ai_card, 16, 0);
+    lv_obj_set_style_radius(ai_card, 4, 0);
     lv_obj_set_style_pad_all(ai_card, 0, 0);
     lv_obj_remove_flag(ai_card, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_clip_corner(ai_card, true, 0);
@@ -343,13 +342,13 @@ void CustomLcdDisplay::SetupMusicUI() {
     lv_label_set_text(music_emotion_label_, "待命");
     lv_obj_align(music_emotion_label_, LV_ALIGN_LEFT_MID, 4, 20);
 
-    // 竖分隔线
+    // A1：竖线改 1px 短分隔
     lv_obj_t *divider = lv_obj_create(ai_card);
-    lv_obj_set_size(divider, 2, ai_h - 20);
+    lv_obj_set_size(divider, 1, ai_h - 24);
     lv_obj_set_style_bg_color(divider, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(divider, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(divider, 0, 0);
-    lv_obj_set_style_radius(divider, 1, 0);
+    lv_obj_set_style_radius(divider, 0, 0);
     lv_obj_align(divider, LV_ALIGN_LEFT_MID, emotion_w + 10, 0);
     lv_obj_remove_flag(divider, LV_OBJ_FLAG_SCROLLABLE);
 

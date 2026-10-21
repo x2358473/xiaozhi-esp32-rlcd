@@ -34,6 +34,14 @@ static const char *TAG = "CustomDisplay";
 
 // ===== LVGL flush 回调 =====
 
+// 4x4 Bayer 抖动矩阵：单色屏上用网点模拟灰阶（0=最暗，15=最亮）
+static const uint8_t kBayer4x4[4][4] = {
+    { 0,  8,  2, 10},
+    {12,  4, 14,  6},
+    { 3, 11,  1,  9},
+    {15,  7, 13,  5},
+};
+
 void CustomLcdDisplay::Lvgl_flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * color_p)
 {
     assert(disp != NULL);
@@ -42,11 +50,20 @@ void CustomLcdDisplay::Lvgl_flush_cb(lv_display_t * disp, const lv_area_t * area
     uint16_t *buffer = (uint16_t *)color_p;
     for(int y = area->y1; y <= area->y2; y++)
     {
+        const uint8_t *bayer_row = kBayer4x4[y & 3];
         for(int x = area->x1; x <= area->x2; x++) 
         {
-            uint8_t color = (*buffer < 0x7fff) ? ColorBlack : ColorWhite;
+            const uint16_t px = *buffer++;
+            // RGB565 -> 亮度（0..255 近似，权重和为 256 避免除法）
+            const uint16_t r5 = (px >> 11) & 0x1F;
+            const uint16_t g6 = (px >> 5) & 0x3F;
+            const uint16_t b5 = px & 0x1F;
+            const uint16_t luma = (r5 * 616 + g6 * 600 + b5 * 232) >> 8;
+
+            // 与 Bayer 阈值比较：亮度越低黑点占比越高（可呈现 25%/50%/75% 网点灰）
+            const uint8_t threshold = (bayer_row[x & 3] << 4) + 8;
+            const uint8_t color = (luma < threshold) ? ColorBlack : ColorWhite;
             rlcd->RLCD_SetPixel(x, y, color);
-            buffer++;
         }
     }
     rlcd->RLCD_Display();
@@ -101,7 +118,11 @@ CustomLcdDisplay::CustomLcdDisplay(esp_lcd_panel_io_handle_t panel_io,
     // 告诉显示框架：当前自定义 UI 已经初始化完成
     // 否则基类的 SetStatus/ShowNotification 会一直误判为“UI 未准备好”
     setup_ui_called_ = true;
-    ApplyDisplayMode();
+    {
+        // LVGL 任务已在 lvgl_port_init 后运行，此处改控件必须持锁
+        DisplayLockGuard lock(this);
+        ApplyDisplayMode();
+    }
 
     // 5. 启动时从 NVS 加载上次保存的备忘录
     LoadMemoFromNvs();
@@ -110,8 +131,15 @@ CustomLcdDisplay::CustomLcdDisplay(esp_lcd_panel_io_handle_t panel_io,
 CustomLcdDisplay::~CustomLcdDisplay() {
     if (update_task_handle_) {
         vTaskDelete(update_task_handle_);
+        update_task_handle_ = nullptr;
+    }
+    // 基类析构会 lv_display_delete，期间可能调用 flush 回调访问 rlcd_，
+    // 先把 flush 回调置空再释放驱动，避免 use-after-free
+    if (display_) {
+        lv_display_set_flush_cb(display_, [](lv_display_t*, const lv_area_t*, uint8_t*) {});
     }
     delete rlcd_;
+    rlcd_ = nullptr;
 }
 
 // ===== 备忘录功能 =====
@@ -180,11 +208,37 @@ void CustomLcdDisplay::RefreshMemoDisplay() {
     RefreshMemoDisplayInternal();
 }
 
+// 系统信息滚动超时退出：恢复聊天标签布局，避免仪表盘永久冻结
+void CustomLcdDisplay::ExitSystemInfoMode() {
+    if (!showing_system_info_.load()) return;
+
+    {
+        DisplayLockGuard lock(this);
+        SetShowingSystemInfo(false);
+        if (chat_status_label_) {
+            lv_anim_delete(chat_status_label_, nullptr);
+            lv_label_set_long_mode(chat_status_label_, LV_LABEL_LONG_WRAP);
+            lv_obj_align(chat_status_label_, LV_ALIGN_LEFT_MID, 64 + 20, 0);
+            lv_label_set_text(chat_status_label_, "");
+        }
+        if (music_chat_status_label_) {
+            lv_label_set_text(music_chat_status_label_, "");
+        }
+        if (pomo_chat_status_label_) {
+            lv_label_set_text(pomo_chat_status_label_, "");
+        }
+    }
+
+    // 强制下一轮刷新时间/日期（last_min_ 被系统信息模式冻结过）
+    last_min_ = -1;
+    ESP_LOGI("CustomLcdDisplay", "系统信息模式已超时退出");
+}
+
 // ===== AI 消息适配（重写小智的方法，只更新左下角卡片）=====
 
 void CustomLcdDisplay::SetChatMessage(const char* role, const char* content) {
     DisplayLockGuard lock(this);
-    if (chat_status_label_ == nullptr && music_chat_status_label_ == nullptr) return;
+    if (chat_status_label_ == nullptr) return;  // 主标签为空时后续 lv_* 会解引用 NULL
     if (!content || strlen(content) == 0) return;
 
     // 停止可能正在运行的滚动动画（系统信息或之前的 AI 滚动）
@@ -339,13 +393,15 @@ void CustomLcdDisplay::UpdateStatusBar(bool update_all) {
 // ===== 重写主题切换 =====
 
 void CustomLcdDisplay::SetTheme(Theme* theme) {
-    // RLCD 是 1-bit 单色屏，只有黑白两色，不需要主题切换。
-    // 基类的 SetTheme 会操作 container_、content_、top_bar_ 等控件，
-    // 我们的天气站 UI 没有创建这些，直接跳过避免崩溃。
-    
-    // 但需要保存 theme 指针，SetEmotion 需要用它来加载 emoji 图片
+    // RLCD 是 1-bit 单色屏，只有黑白两色，不做视觉主题切换
+    // （基类会操作我们没创建的 container_/content_/top_bar_）。
+    // 但主题名必须落到 NVS，否则每次启动都恢复不了上次选择。
     current_theme_ = theme;
-    ESP_LOGI(TAG, "RLCD 单色屏，跳过主题切换（已保存 theme 指针）");
+    {
+        Settings settings("display", true);
+        settings.SetString("theme", theme ? theme->name() : "");
+    }
+    ESP_LOGI(TAG, "RLCD 单色屏，跳过主题 UI 切换（已保存 theme 指针）");
 }
 
 void CustomLcdDisplay::ApplyDisplayMode() {

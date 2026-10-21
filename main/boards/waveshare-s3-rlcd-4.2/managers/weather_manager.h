@@ -1,4 +1,5 @@
 #pragma once
+#include <mutex>
 #include <string>
 #include "esp_http_client.h"
 
@@ -23,7 +24,10 @@ public:
     
     // 获取最新天气数据（线程安全，直接读取缓存）
     // 即使网络断开，也能返回上次成功获取的数据
-    WeatherData getLatestData() { return latest_data_; }
+    WeatherData getLatestData() {
+        std::lock_guard<std::mutex> lock(data_mutex_);
+        return latest_data_;
+    }
 
     // 设置 API 密钥和主机（从配置中读取）
     void setApiConfig(const char* key, const char* host);
@@ -38,6 +42,7 @@ public:
 private:
     WeatherManager();
     WeatherData latest_data_;
+    mutable std::mutex data_mutex_;  // 保护 latest_data_（写：MCP 回调任务，读：DataUpdateTask）
     
     // API 配置
     std::string api_key_;

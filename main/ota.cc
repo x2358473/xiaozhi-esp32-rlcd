@@ -17,6 +17,7 @@
 #include <esp_hmac.h>
 #endif
 
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 #include <sstream>
@@ -196,8 +197,13 @@ esp_err_t Ota::CheckVersion() {
             struct timeval tv;
             double ts = timestamp->valuedouble;
             
-            // 如果有时区偏移，计算本地时间
-            if (cJSON_IsNumber(timezone_offset)) {
+            // 如果有时区偏移，计算本地时间。
+            // 注意：叠加偏移是给"未设置 TZ（默认 UTC）"的设备用的，目的是把 UTC 时间戳
+            // 转成"本地时间伪装成 UTC"，让 localtime() 直接显示本地时间。
+            // 若板子已通过 setenv("TZ", ...) 设置时区（本板 TZ=CST-8），再叠加会导致
+            // 时间快出一个时区偏移（实测快 8 小时），此时应直接使用服务器 UTC 时间戳。
+            const char* tz_env = getenv("TZ");
+            if (cJSON_IsNumber(timezone_offset) && (tz_env == nullptr || tz_env[0] == '\0')) {
                 ts += (timezone_offset->valueint * 60 * 1000); // 转换分钟为毫秒
             }
             
