@@ -52,7 +52,6 @@ void CustomLcdDisplay::SetupWeatherUI() {
 
     const lv_font_t *font_small  = &alibaba_puhui_16;
     const lv_font_t *font_normal = &alibaba_puhui_24;
-    const lv_font_t *font_large  = &alibaba_puhui_48;
     const lv_font_t *font_clock  = &alibaba_black_64;
     // 小智完整字库（7415 常用汉字，AI 对话区域专用）
     const lv_font_t *font_ai     = &font_puhui_16_4;

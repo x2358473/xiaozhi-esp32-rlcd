@@ -257,7 +257,8 @@ void CustomLcdDisplay::DataUpdateTask(void *arg) {
                 if (self->day_label_) lv_label_set_text(self->day_label_, kWeekNames[timeinfo.tm_wday]);
 
                 // 公历日期（单行显示：2026年10月1日）
-                char date_buf[32];
+                // 留足空间：极端情况下 int 最大位数 + 3 个汉字（UTF-8 3 字节）也不会截断
+                char date_buf[64];
                 snprintf(date_buf, sizeof(date_buf), "%d年%d月%d日",
                          timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
                 if (self->date_num_label_) lv_label_set_text(self->date_num_label_, date_buf);

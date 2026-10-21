@@ -145,7 +145,6 @@ private:
         GetBatteryLevel(battery_level, charging, discharging);
         
         // WiFi 信息
-        auto& app = Application::GetInstance();
         wifi_ap_record_t ap_info = {};
         const char* wifi_status = (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) ? "已连接" : "未连接";
         
