@@ -43,6 +43,8 @@ jobs:
         name: Select variants based on changes
         env:
           ALL_VARIANTS: ${{ steps.list.outputs.all_variants }}
+          # push 时只编译这块板，避免一次性全量编译 118 个变体
+          DEFAULT_BOARD: waveshare-s3-rlcd-4.2
         run: |
           EVENT_NAME="${{ github.event_name }}"
 
@@ -58,9 +60,10 @@ jobs:
             exit 0
           fi
 
-          # push 到 main 分支，编译全部变体
+          # push：只编译默认板（DEFAULT_BOARD），不再全量编译所有板
           if [[ "$EVENT_NAME" == "push" ]]; then
-            echo "variants=$ALL_VARIANTS" >> $GITHUB_OUTPUT
+            FILTERED=$(echo "$ALL_VARIANTS" | jq -c --arg board "$DEFAULT_BOARD" 'map(select(.board == $board))')
+            echo "variants=$FILTERED" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -115,6 +118,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Prepare secret_config.h
+        shell: bash
+        run: |
+          for f in main/boards/*/secret_config.h.example; do
+            [ -e "$f" ] || continue
+            h="${f%.example}"
+            if [ ! -f "$h" ]; then
+              cp "$f" "$h"
+              echo "generated $h"
+            fi
+          done
 
       - name: Build current variant
         shell: bash
